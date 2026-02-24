@@ -83,7 +83,7 @@ export function middleware(request: NextRequest) {
 
   // 2. Ochrona ścieżek — sprawdzamy cookie auth
   if (isProtectedPath(pathname)) {
-    const authCookie = request.cookies.get("astrostr-auth");
+    const authCookie = request.cookies.get("astrofor-auth");
 
     if (!authCookie?.value) {
       const loginUrl = new URL("/login", request.url);
@@ -94,7 +94,7 @@ export function middleware(request: NextRequest) {
 
   // 3. Jeśli użytkownik zalogowany i próbuje wejść na /login lub /register — redirect na stronę główną
   if (pathname === "/login" || pathname === "/register") {
-    const authCookie = request.cookies.get("astrostr-auth");
+    const authCookie = request.cookies.get("astrofor-auth");
     if (authCookie?.value) {
       return NextResponse.redirect(new URL("/", request.url));
     }

@@ -21,7 +21,7 @@ export default function EditProfilePage() {
   const [camera, setCamera] = useState("ZWO ASI2600MM Pro");
   const [mount, setMount] = useState("Sky-Watcher EQ6-R Pro");
   const [showSuccess, setShowSuccess] = useState(false);
-  const [email, setEmail] = useState("marek@astrostr.pl");
+  const [email, setEmail] = useState("marek@astrofor.pl");
   const [emailNotifs, setEmailNotifs] = useState(true);
 
   const handleSave = (e: React.FormEvent) => {

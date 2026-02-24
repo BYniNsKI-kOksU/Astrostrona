@@ -22,9 +22,9 @@ interface MockAccount {
 }
 
 const MOCK_ACCOUNTS: MockAccount[] = [
-  { email: "marek@astrostr.pl", password: "Test1234!", userId: "u1" },
-  { email: "anna@astrostr.pl", password: "Test1234!", userId: "u2" },
-  { email: "michal@astrostr.pl", password: "Test1234!", userId: "u3" },
+  { email: "marek@astrofor.pl", password: "Test1234!", userId: "u1" },
+  { email: "anna@astrofor.pl", password: "Test1234!", userId: "u2" },
+  { email: "michal@astrofor.pl", password: "Test1234!", userId: "u3" },
 ];
 
 // =============================================
@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Sprawdź sesję przy starcie
   useEffect(() => {
-    const savedAuth = localStorage.getItem("astrostr-auth-user");
+    const savedAuth = localStorage.getItem("astrofor-auth-user");
     if (savedAuth) {
       try {
         const parsed = JSON.parse(savedAuth);
@@ -103,10 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (foundUser) {
           setUser(foundUser);
           // Ustaw cookie dla middleware
-          document.cookie = `astrostr-auth=${parsed.userId}; path=/; max-age=86400; SameSite=Strict`;
+          document.cookie = `astrofor-auth=${parsed.userId}; path=/; max-age=86400; SameSite=Strict`;
         }
       } catch {
-        localStorage.removeItem("astrostr-auth-user");
+        localStorage.removeItem("astrofor-auth-user");
       }
     }
     setIsLoading(false);
@@ -169,11 +169,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(foundUser);
       setLoginAttempts(0);
       localStorage.setItem(
-        "astrostr-auth-user",
+        "astrofor-auth-user",
         JSON.stringify({ userId: foundUser.id, loginAt: Date.now() })
       );
       // Cookie dla middleware
-      document.cookie = `astrostr-auth=${foundUser.id}; path=/; max-age=86400; SameSite=Strict`;
+      document.cookie = `astrofor-auth=${foundUser.id}; path=/; max-age=86400; SameSite=Strict`;
 
       return { success: true };
     },
@@ -248,10 +248,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(newUser);
       localStorage.setItem(
-        "astrostr-auth-user",
+        "astrofor-auth-user",
         JSON.stringify({ userId: newUser.id, loginAt: Date.now() })
       );
-      document.cookie = `astrostr-auth=${newUser.id}; path=/; max-age=86400; SameSite=Strict`;
+      document.cookie = `astrofor-auth=${newUser.id}; path=/; max-age=86400; SameSite=Strict`;
 
       return { success: true };
     },
@@ -261,9 +261,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Logout
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem("astrostr-auth-user");
+    localStorage.removeItem("astrofor-auth-user");
     // Usuń cookie
-    document.cookie = "astrostr-auth=; path=/; max-age=0; SameSite=Strict";
+    document.cookie = "astrofor-auth=; path=/; max-age=0; SameSite=Strict";
   }, []);
 
   return (

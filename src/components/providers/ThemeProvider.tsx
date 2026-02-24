@@ -23,11 +23,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem("astrostr-theme") as Theme | null;
+    const saved = localStorage.getItem("astrofor-theme") as Theme | null;
     if (saved) setThemeState(saved);
-    const savedFont = localStorage.getItem("astrostr-fontsize") as "small" | "normal" | "large" | null;
+    const savedFont = localStorage.getItem("astrofor-fontsize") as "small" | "normal" | "large" | null;
     if (savedFont) setFontSizeState(savedFont);
-    const savedMotion = localStorage.getItem("astrostr-reduced-motion");
+    const savedMotion = localStorage.getItem("astrofor-reduced-motion");
     if (savedMotion === "true") setReducedMotionState(true);
   }, []);
 
@@ -38,13 +38,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // Usuwamy stare klasy
     root.classList.remove("theme-dark", "theme-light", "theme-midnight", "theme-amoled");
     root.classList.add(`theme-${theme}`);
-    localStorage.setItem("astrostr-theme", theme);
+    localStorage.setItem("astrofor-theme", theme);
 
     // Font size
     root.classList.remove("text-sm", "text-base", "text-lg");
     if (fontSize === "small") root.classList.add("text-sm");
     else if (fontSize === "large") root.classList.add("text-lg");
-    localStorage.setItem("astrostr-fontsize", fontSize);
+    localStorage.setItem("astrofor-fontsize", fontSize);
 
     // Reduced motion
     if (reducedMotion) {
@@ -52,7 +52,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       root.classList.remove("reduce-motion");
     }
-    localStorage.setItem("astrostr-reduced-motion", String(reducedMotion));
+    localStorage.setItem("astrofor-reduced-motion", String(reducedMotion));
   }, [theme, fontSize, reducedMotion, mounted]);
 
   const setTheme = (t: Theme) => setThemeState(t);

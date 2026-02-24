@@ -140,7 +140,7 @@ export default function Navbar() {
           <Link href="/" className="flex items-center gap-2.5">
             <span className="text-2xl">🔭</span>
             <span className="font-display text-xl font-bold bg-gradient-to-r from-cosmos-400 to-nebula-400 bg-clip-text text-transparent">
-              Astrostr
+              Astrofor
             </span>
           </Link>
 

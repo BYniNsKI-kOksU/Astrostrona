@@ -54,7 +54,7 @@ function LoginForm() {
           <Link href="/" className="inline-flex items-center gap-2.5 mb-4">
             <span className="text-4xl">🔭</span>
             <span className="font-display text-3xl font-bold bg-gradient-to-r from-cosmos-400 to-nebula-400 bg-clip-text text-transparent">
-              Astrostr
+              Astrofor
             </span>
           </Link>
           <p className="text-night-400 text-sm">Zaloguj się, aby kontynuować</p>
@@ -154,9 +154,9 @@ function LoginForm() {
             </p>
             <div className="space-y-2 text-xs">
               {[
-                { name: "Marek (Admin)", email: "marek@astrostr.pl" },
-                { name: "Anna", email: "anna@astrostr.pl" },
-                { name: "Michał", email: "michal@astrostr.pl" },
+                { name: "Marek (Admin)", email: "marek@astrofor.pl" },
+                { name: "Anna", email: "anna@astrofor.pl" },
+                { name: "Michał", email: "michal@astrofor.pl" },
               ].map((acc) => (
                 <button
                   key={acc.email}
@@ -202,7 +202,7 @@ function LoginFallback() {
           <div className="inline-flex items-center gap-2.5 mb-4">
             <span className="text-4xl">🔭</span>
             <span className="font-display text-3xl font-bold bg-gradient-to-r from-cosmos-400 to-nebula-400 bg-clip-text text-transparent">
-              Astrostr
+              Astrofor
             </span>
           </div>
           <p className="text-night-400 text-sm">Ładowanie...</p>

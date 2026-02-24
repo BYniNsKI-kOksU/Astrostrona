@@ -12,7 +12,7 @@ export default function RulesPage() {
           {
             title: "1. Zasady ogólne",
             items: [
-              "Astrostr to platforma dla miłośników astronomii. Każdy użytkownik zobowiązuje się do przestrzegania zasad kultury i wzajemnego szacunku.",
+              "Astrofor to platforma dla miłośników astronomii. Każdy użytkownik zobowiązuje się do przestrzegania zasad kultury i wzajemnego szacunku.",
               "Rejestracja jest bezpłatna. Konto jest osobiste i nie może być udostępniane innym osobom.",
               "Administracja zastrzega sobie prawo do usuwania kont naruszających regulamin.",
             ],
@@ -55,9 +55,9 @@ export default function RulesPage() {
           {
             title: "6. Odpowiedzialność",
             items: [
-              "Astrostr nie ponosi odpowiedzialności za treści publikowane przez użytkowników.",
+              "Astrofor nie ponosi odpowiedzialności za treści publikowane przez użytkowników.",
               "Administracja dokłada starań, aby platforma działała stabilnie, ale nie gwarantuje 100% dostępności.",
-              "W przypadku naruszenia regulaminu prosimy o kontakt: kontakt@astrostr.pl",
+              "W przypadku naruszenia regulaminu prosimy o kontakt: kontakt@astrofor.pl",
             ],
           },
         ].map((section) => (

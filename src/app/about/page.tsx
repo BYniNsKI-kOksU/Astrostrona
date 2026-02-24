@@ -7,9 +7,9 @@ export default function AboutPage() {
 
       <div className="glass-card p-6 md:p-8 space-y-6">
         <section>
-          <h2 className="text-xl font-bold text-night-100 mb-3">Czym jest Astrostr?</h2>
+          <h2 className="text-xl font-bold text-night-100 mb-3">Czym jest Astrofor?</h2>
           <p className="text-night-300 leading-relaxed">
-            Astrostr to polska społeczność astronomiczna stworzona przez pasjonatów kosmosu, dla pasjonatów kosmosu.
+            Astrofor to polska społeczność astronomiczna stworzona przez pasjonatów kosmosu, dla pasjonatów kosmosu.
             Łączymy forum dyskusyjne, galerię zdjęć z pełnymi danymi technicznymi (jak Astrobin),
             system grywalizacji oraz sekcję naukową — wszystko w jednym miejscu.
           </p>
@@ -48,7 +48,7 @@ export default function AboutPage() {
         <section>
           <h2 className="text-xl font-bold text-night-100 mb-3">Zespół</h2>
           <p className="text-night-300 leading-relaxed">
-            Astrostr jest projektem społecznościowym tworzonym z pasji. Jeśli chcesz dołączyć do zespołu
+            Astrofor jest projektem społecznościowym tworzonym z pasji. Jeśli chcesz dołączyć do zespołu
             lub pomóc w rozwoju platformy —{" "}
             <Link href="/contact" className="text-cosmos-400 hover:text-cosmos-300 transition-colors">
               skontaktuj się z nami

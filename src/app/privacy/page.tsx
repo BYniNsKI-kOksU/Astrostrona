@@ -12,7 +12,7 @@ export default function PrivacyPage() {
           {
             title: "1. Administrator danych",
             content:
-              "Administratorem danych osobowych jest Astrostr — społeczność astronomiczna dostępna pod adresem astrostr.pl. W sprawach ochrony danych kontakt: prywatnosc@astrostr.pl",
+              "Administratorem danych osobowych jest Astrofor — społeczność astronomiczna dostępna pod adresem astrofor.pl. W sprawach ochrony danych kontakt: prywatnosc@astrofor.pl",
           },
           {
             title: "2. Jakie dane zbieramy?",

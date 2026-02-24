@@ -1,4 +1,4 @@
-# Astrostr 🔭
+# Astrofor 🔭
 
 Strona poświęcona astronomii — forum, galeria, dane zdjęć, grywalizacja i więcej.
 

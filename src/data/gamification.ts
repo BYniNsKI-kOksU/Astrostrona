@@ -118,7 +118,7 @@ export const ASTRO_TITLES: AstroTitle[] = [
   {
     id: "t12",
     name: "Wielki Obserwator",
-    subtitle: "Legenda Astrostr",
+    subtitle: "Legenda Astrofor",
     icon: "👑",
     requiredPoints: 10000,
     tier: 12,
@@ -426,7 +426,7 @@ export const ALL_ACHIEVEMENTS: Achievement[] = [
   {
     id: "a_early_adopter",
     name: "Wczesny Odkrywca",
-    description: "Dołącz do Astrostr w pierwszym miesiącu istnienia.",
+    description: "Dołącz do Astrofor w pierwszym miesiącu istnienia.",
     icon: "🚀",
     rarity: "epic",
     category: "exploration",
@@ -533,7 +533,7 @@ export const ALL_ACHIEVEMENTS: Achievement[] = [
   },
   {
     id: "a_special_legend",
-    name: "Legenda Astrostr",
+    name: "Legenda Astrofor",
     description: "Osiągnij najwyższy tytuł — Wielki Obserwator.",
     icon: "👑",
     rarity: "legendary",

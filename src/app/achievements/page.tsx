@@ -41,7 +41,7 @@ export default function AchievementsPage() {
           🏛️ Tytuły astronomiczne
         </h2>
         <p className="text-night-400 text-sm mb-4">
-          Tytuły nadawane są na cześć wielkich astronomów — od Ptolemeusza do legendy Astrostr.
+          Tytuły nadawane są na cześć wielkich astronomów — od Ptolemeusza do legendy Astrofor.
           Zdobywaj punkty za osiągnięcia, aby awansować!
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

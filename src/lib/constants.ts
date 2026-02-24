@@ -2,9 +2,9 @@
  * Stałe aplikacji
  */
 
-export const APP_NAME = "Astrostr";
+export const APP_NAME = "Astrofor";
 export const APP_DESCRIPTION = "Społeczność astronomiczna — forum, galeria, nauka";
-export const APP_URL = "https://astrostr.pl";
+export const APP_URL = "https://astrofor.pl";
 
 export const BORTLE_SCALE_LABELS: Record<number, string> = {
   1: "Doskonałe ciemne niebo",

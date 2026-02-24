@@ -18,7 +18,7 @@ export default function ContactPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {[
-          { icon: HiOutlineEnvelope, title: "E-mail", desc: "kontakt@astrostr.pl", sub: "Odpowiadamy w ciągu 24h" },
+          { icon: HiOutlineEnvelope, title: "E-mail", desc: "kontakt@astrofor.pl", sub: "Odpowiadamy w ciągu 24h" },
           { icon: HiOutlineChatBubbleLeftRight, title: "Forum", desc: "Sekcja Pomoc", sub: "Zadaj pytanie społeczności" },
           { icon: HiOutlineMapPin, title: "Lokalizacja", desc: "Polska 🇵🇱", sub: "Projekt zdalny" },
         ].map((item) => (

@@ -205,10 +205,10 @@ export const ASTRONOMER_BIOS: AstronomerBio[] = [
     fullName: "Wielki Obserwator",
     born: "—",
     died: "—",
-    nationality: "Społeczność Astrostr",
+    nationality: "Społeczność Astrofor",
     portrait: "👑",
     summary:
-      "Najwyższy tytuł w społeczności Astrostr. Zarezerwowany dla tych, którzy swoją pasją, wiedzą i zaangażowaniem zasłużyli na miano legendy.",
+      "Najwyższy tytuł w społeczności Astrofor. Zarezerwowany dla tych, którzy swoją pasją, wiedzą i zaangażowaniem zasłużyli na miano legendy.",
     keyAchievements: [
       "Zdobył ponad 10 000 punktów grywalizacji",
       "Ukończył dziesiątki osiągnięć w każdej kategorii",

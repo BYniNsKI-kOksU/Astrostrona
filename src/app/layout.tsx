@@ -4,7 +4,7 @@ import { ThemeProvider, AuthProvider } from "@/components/providers";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Astrostr — Społeczność astronomiczna",
+  title: "Astrofor — Społeczność astronomiczna",
   description:
     "Forum, galeria zdjęć, newsy i nauka — wszystko o astronomii w jednym miejscu.",
 };

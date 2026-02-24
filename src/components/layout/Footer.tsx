@@ -10,7 +10,7 @@ export default function Footer() {
             <Link href="/" className="flex items-center gap-2 mb-3">
               <span className="text-xl">🔭</span>
               <span className="font-display text-lg font-bold bg-gradient-to-r from-cosmos-400 to-nebula-400 bg-clip-text text-transparent">
-                Astrostr
+                Astrofor
               </span>
             </Link>
             <p className="text-sm text-night-400 leading-relaxed">
@@ -55,7 +55,7 @@ export default function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-night-800 text-center text-sm text-night-500">
-          © {new Date().getFullYear()} Astrostr. Stworzone z ❤️ dla miłośników kosmosu.
+          © {new Date().getFullYear()} Astrofor. Stworzone z ❤️ dla miłośników kosmosu.
         </div>
       </div>
     </footer>
