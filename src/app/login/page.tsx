@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers";
@@ -11,7 +11,7 @@ import {
   HiOutlineExclamationTriangle,
 } from "react-icons/hi2";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";
@@ -191,5 +191,34 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-[80vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2.5 mb-4">
+            <span className="text-4xl">🔭</span>
+            <span className="font-display text-3xl font-bold bg-gradient-to-r from-cosmos-400 to-nebula-400 bg-clip-text text-transparent">
+              Astrostr
+            </span>
+          </div>
+          <p className="text-night-400 text-sm">Ładowanie...</p>
+        </div>
+        <div className="glass-card rounded-2xl border border-night-700 p-6 sm:p-8 flex items-center justify-center min-h-[300px]">
+          <span className="animate-spin h-8 w-8 border-2 border-cosmos-400/30 border-t-cosmos-400 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

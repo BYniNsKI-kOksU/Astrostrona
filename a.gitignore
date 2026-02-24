@@ -1,7 +1,0 @@
-node_modules/
-.next/
-.history/
-.DS_Store
-*.local
-build/
-dist/
