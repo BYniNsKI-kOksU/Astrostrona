@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@layer base {
+  body {
+    @apply bg-night-950 text-night-100 font-sans antialiased;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-night-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-night-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-night-500;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-night-900/60 backdrop-blur-md border border-night-700/50 rounded-xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card hover:bg-night-800/60 hover:border-night-600/50 transition-all duration-200;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-cosmos-500 hover:bg-cosmos-600 text-white rounded-lg font-medium transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-night-700 hover:bg-night-600 text-night-100 rounded-lg font-medium transition-colors duration-200;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 hover:bg-night-800 text-night-300 hover:text-night-100 rounded-lg font-medium transition-colors duration-200;
+  }
+
+  .tag {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full border;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-2.5 bg-night-800 border border-night-600 rounded-lg text-night-100 placeholder:text-night-500 focus:outline-none focus:ring-2 focus:ring-cosmos-500/50 focus:border-cosmos-500 transition-all duration-200;
+  }
+
+  /* Animacja gwiazd w tle */
+  .stars-bg {
+    background-image:
+      radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.15), transparent),
+      radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.1), transparent),
+      radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 0.15), transparent),
+      radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.1), transparent),
+      radial-gradient(2px 2px at 160px 30px, rgba(255, 255, 255, 0.12), transparent);
+    background-size: 200px 100px;
+  }
+}
+
+/* =============================================
+   MOTYWY (Theme Variants)
+   ============================================= */
+
+/* Tryb jasny */
+.theme-light body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+.theme-light .glass-card {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border-color: #e2e8f0;
+}
+.theme-light .glass-card-hover {
+  background-color: rgba(255, 255, 255, 0.8);
+  border-color: #e2e8f0;
+}
+.theme-light .glass-card-hover:hover {
+  background-color: rgba(255, 255, 255, 1);
+  border-color: #cbd5e1;
+}
+.theme-light .btn-ghost {
+  color: #475569;
+}
+.theme-light .btn-ghost:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+.theme-light .input-field {
+  background-color: #fff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.theme-light .input-field::placeholder {
+  color: #94a3b8;
+}
+.theme-light header {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: #e2e8f0 !important;
+}
+.theme-light footer {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+.theme-light .stars-bg {
+  background-image: none !important;
+}
+/* Jasny motyw: kolory night → slate */
+.theme-light .text-night-100 { color: #0f172a; }
+.theme-light .text-night-200 { color: #1e293b; }
+.theme-light .text-night-300 { color: #334155; }
+.theme-light .text-night-400 { color: #64748b; }
+.theme-light .text-night-500 { color: #94a3b8; }
+.theme-light .border-night-700,
+.theme-light .border-night-800 { border-color: #e2e8f0; }
+.theme-light .bg-night-800 { background-color: #f1f5f9; }
+.theme-light .bg-night-900 { background-color: #f8fafc; }
+.theme-light .bg-night-950 { background-color: #fff; }
+.theme-light .bg-night-950\/80 { background-color: rgba(255,255,255,0.9); }
+.theme-light .bg-night-950\/95 { background-color: rgba(255,255,255,0.97); }
+.theme-light .hover\:bg-night-800:hover { background-color: #f1f5f9; }
+
+/* Tryb midnight (głębszy ciemny) */
+.theme-midnight body {
+  background-color: #05050f;
+  color: #f1f5f9;
+}
+.theme-midnight .glass-card {
+  background-color: rgba(10, 10, 26, 0.7);
+  border-color: rgba(26, 26, 62, 0.6);
+}
+.theme-midnight header {
+  background-color: rgba(5, 5, 15, 0.92) !important;
+  border-color: #151530 !important;
+}
+
+/* Tryb AMOLED (czysty czarny) */
+.theme-amoled body {
+  background-color: #000;
+  color: #f1f5f9;
+}
+.theme-amoled .glass-card {
+  background-color: rgba(0, 0, 0, 0.8);
+  border-color: rgba(38, 38, 38, 0.5);
+}
+.theme-amoled header {
+  background-color: rgba(0, 0, 0, 0.95) !important;
+  border-color: #262626 !important;
+}
+.theme-amoled footer {
+  background-color: #000 !important;
+  border-color: #262626 !important;
+}
+.theme-amoled .stars-bg {
+  background-image: none !important;
+}
+
+/* Redukcja animacji */
+.reduce-motion * {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
