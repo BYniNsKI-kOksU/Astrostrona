@@ -2,6 +2,7 @@ import Link from "next/link";
 import { mockPosts, mockImages } from "@/data";
 import { PostCard } from "@/components/post";
 import { ImageCard } from "@/components/gallery";
+import NasaApod from "@/components/shared/NasaApod";
 import {
   HiOutlineChatBubbleLeftRight,
   HiOutlinePhoto,
@@ -131,6 +132,25 @@ export default function HomePage() {
             <ImageCard key={image.id} image={image} />
           ))}
         </div>
+      </section>
+
+      {/* NASA APOD */}
+      <section className="mb-16">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-2xl font-bold text-night-100">
+            🚀 Astronomiczne Zdjęcie Dnia — NASA
+          </h2>
+          <a
+            href="https://apod.nasa.gov/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-sm text-cosmos-400 hover:text-cosmos-300 transition-colors"
+          >
+            APOD NASA
+            <HiOutlineArrowRight className="h-4 w-4" />
+          </a>
+        </div>
+        <NasaApod />
       </section>
 
       {/* Stats */}

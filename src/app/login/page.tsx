@@ -4,6 +4,7 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/providers";
+import { useToast } from "@/components/ui";
 import {
   HiOutlineEye,
   HiOutlineEyeSlash,
@@ -11,11 +12,14 @@ import {
   HiOutlineExclamationTriangle,
 } from "react-icons/hi2";
 
+const TEST_EMAILS = ["marek@astrofor.pl", "anna@astrofor.pl", "michal@astrofor.pl"];
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";
   const { login, isLocked, loginAttempts } = useAuth();
+  const { addToast } = useToast();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,6 +41,22 @@ function LoginForm() {
     const result = await login(email, password);
 
     if (result.success) {
+      // Toast w zależności od typu konta
+      if (TEST_EMAILS.includes(email.toLowerCase())) {
+        addToast({
+          type: "warning",
+          title: "⚠️ Konto testowe",
+          message: "Zalogowano na konto demo. Nie używaj do prawdziwych danych — są publiczne.",
+          duration: 7000,
+        });
+      } else {
+        addToast({
+          type: "success",
+          title: "Zalogowano pomyślnie!",
+          message: "Witaj z powrotem w Astrofor 🔭",
+          duration: 4000,
+        });
+      }
       router.push(redirect);
       router.refresh();
     } else {

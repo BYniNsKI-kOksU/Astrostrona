@@ -24,6 +24,17 @@ import {
 import clsx from "clsx";
 import { useAuth } from "@/components/providers";
 
+const SUBREDDITS = [
+  { slug: "astrofoto", label: "a/astrofoto", icon: "📸", desc: "Zdjęcia astro" },
+  { slug: "sprzet", label: "a/sprzet", icon: "🔭", desc: "Teleskopy, montaże, kamery" },
+  { slug: "obserwacje", label: "a/obserwacje", icon: "👁️", desc: "Raporty z obserwacji" },
+  { slug: "poczatkujacy", label: "a/poczatkujacy", icon: "🌱", desc: "Pytania na start" },
+  { slug: "nauka", label: "a/nauka", icon: "🔬", desc: "Artykuły naukowe" },
+  { slug: "software", label: "a/software", icon: "💻", desc: "PixInsight, Siril, N.I.N.A." },
+  { slug: "newsy", label: "a/newsy", icon: "📰", desc: "Odkrycia i wydarzenia" },
+  { slug: "ogolne", label: "a/ogolne", icon: "💬", desc: "Wszystko inne" },
+];
+
 const navItems = [
   { href: "/", label: "Strona główna", icon: HiOutlineHome },
   { href: "/forum", label: "Forum", icon: HiOutlineChatBubbleLeftRight },
@@ -122,11 +133,41 @@ export default function Navbar() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
+      // Sprawdź czy to wyszukiwanie a/
+      const subMatch = searchQuery.match(/^a\/(\w+)$/i);
+      if (subMatch) {
+        const slug = subMatch[1].toLowerCase();
+        const found = SUBREDDITS.find((s) => s.slug === slug);
+        if (found) {
+          const categoryMap: Record<string, string> = {
+            astrofoto: "astrophoto",
+            sprzet: "equipment",
+            obserwacje: "observation",
+            poczatkujacy: "beginner",
+            nauka: "science",
+            software: "software",
+            newsy: "news",
+            ogolne: "general",
+          };
+          router.push(`/forum?category=${categoryMap[slug] || slug}`);
+          setShowSearch(false);
+          setSearchQuery("");
+          return;
+        }
+      }
       router.push(`/forum?search=${encodeURIComponent(searchQuery)}`);
       setShowSearch(false);
       setSearchQuery("");
     }
   };
+
+  // Filter subreddits based on query
+  const filteredSubs = searchQuery.startsWith("a/")
+    ? SUBREDDITS.filter((s) =>
+        s.slug.includes(searchQuery.slice(2).toLowerCase()) ||
+        s.label.includes(searchQuery.toLowerCase())
+      )
+    : [];
 
   const markAllRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
@@ -184,7 +225,8 @@ export default function Navbar() {
 
               {/* Panel wyszukiwania */}
               {showSearch && (
-                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-xl border border-night-700 shadow-2xl p-4 z-50 bg-night-950/95 backdrop-blur-xl">
+                <div className="fixed inset-x-0 top-16 mx-auto max-w-lg px-4 sm:px-0 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 z-50">
+                  <div className="rounded-xl border border-night-700 shadow-2xl p-4 bg-night-950/95 backdrop-blur-xl">
                   <form onSubmit={handleSearch}>
                     <div className="flex items-center gap-2 mb-3">
                       <HiOutlineMagnifyingGlass className="h-4 w-4 text-night-500 shrink-0" />
@@ -193,8 +235,9 @@ export default function Navbar() {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Szukaj postów, zdjęć, użytkowników..."
-                        className="flex-1 bg-transparent text-sm text-night-100 outline-none placeholder:text-night-500"
+                        placeholder="Szukaj... lub wpisz a/ (np. a/astrofoto)"
+                        className="flex-1 bg-transparent text-base sm:text-sm text-night-100 outline-none placeholder:text-night-500"
+                        style={{ fontSize: "16px" }}
                       />
                       <button
                         type="button"
@@ -205,6 +248,48 @@ export default function Navbar() {
                       </button>
                     </div>
                   </form>
+
+                  {/* Subreddit suggestions */}
+                  {(searchQuery.startsWith("a/") || searchQuery === "a") && (
+                    <div className="border-t border-night-700 pt-3 mb-3">
+                      <p className="text-xs text-night-500 mb-2 font-semibold uppercase tracking-wider">
+                        📂 Subfora (wpisz a/...)
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {(filteredSubs.length > 0 ? filteredSubs : SUBREDDITS).map((sub) => (
+                          <button
+                            key={sub.slug}
+                            onClick={() => {
+                              setSearchQuery(`a/${sub.slug}`);
+                              const categoryMap: Record<string, string> = {
+                                astrofoto: "astrophoto",
+                                sprzet: "equipment",
+                                obserwacje: "observation",
+                                poczatkujacy: "beginner",
+                                nauka: "science",
+                                software: "software",
+                                newsy: "news",
+                                ogolne: "general",
+                              };
+                              router.push(`/forum?category=${categoryMap[sub.slug] || sub.slug}`);
+                              setShowSearch(false);
+                              setSearchQuery("");
+                            }}
+                            className="flex items-center gap-2.5 w-full text-left px-2 py-2 rounded-lg text-sm text-night-300 hover:text-night-100 hover:bg-night-800 transition-colors"
+                          >
+                            <span className="text-base">{sub.icon}</span>
+                            <div>
+                              <span className="font-medium text-cosmos-400">{sub.label}</span>
+                              <span className="text-night-500 ml-2 text-xs">{sub.desc}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Szybkie linki — tylko gdy nie szukamy a/ */}
+                  {!searchQuery.startsWith("a/") && searchQuery !== "a" && (
                   <div className="border-t border-night-700 pt-3">
                     <p className="text-xs text-night-500 mb-2 font-semibold uppercase tracking-wider">
                       Szybkie linki
@@ -230,6 +315,8 @@ export default function Navbar() {
                         </Link>
                       ))}
                     </div>
+                  </div>
+                  )}
                   </div>
                 </div>
               )}
@@ -397,7 +484,7 @@ export default function Navbar() {
       </div>
 
       {/* Mobilna nawigacja */}
-      <nav className="md:hidden flex items-center justify-around border-t border-night-800 py-1">
+      <nav className="md:hidden flex items-center justify-evenly border-t border-night-800 py-1.5 px-2">
         {navItems.slice(0, 5).map((item) => {
           const isActive =
             pathname === item.href ||
@@ -407,14 +494,14 @@ export default function Navbar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-xs transition-colors",
+                "flex flex-col items-center justify-center gap-0.5 min-w-[3rem] px-2 py-1 rounded-lg text-[10px] transition-colors",
                 isActive
                   ? "text-cosmos-400"
                   : "text-night-500 hover:text-night-300"
               )}
             >
               <item.icon className="h-5 w-5" />
-              <span>{item.label}</span>
+              <span className="truncate">{item.label}</span>
             </Link>
           );
         })}

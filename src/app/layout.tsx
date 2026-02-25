@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
 import { ThemeProvider, AuthProvider } from "@/components/providers";
+import { ToastProvider } from "@/components/ui";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
@@ -16,12 +17,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pl" className="theme-dark">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+      </head>
       <body className="min-h-screen flex flex-col stars-bg">
         <ThemeProvider>
           <AuthProvider>
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
+            <ToastProvider>
+              <Navbar />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </ToastProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

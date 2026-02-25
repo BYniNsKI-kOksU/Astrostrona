@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/providers";
+import { useToast } from "@/components/ui";
 import {
   HiOutlineEye,
   HiOutlineEyeSlash,
@@ -26,6 +27,7 @@ const PASSWORD_RULES = [
 export default function RegisterPage() {
   const router = useRouter();
   const { register } = useAuth();
+  const { addToast } = useToast();
 
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -63,6 +65,12 @@ export default function RegisterPage() {
     });
 
     if (result.success) {
+      addToast({
+        type: "celebration",
+        title: "🎉 Witaj w Astrofor!",
+        message: "Konto zostało utworzone. Czas odkrywać kosmos! ☕🔭",
+        duration: 6000,
+      });
       router.push("/");
       router.refresh();
     } else {
