@@ -110,6 +110,7 @@ export default function Navbar() {
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuMobileRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -136,7 +137,8 @@ export default function Navbar() {
       }
       if (
         moreMenuRef.current &&
-        !moreMenuRef.current.contains(e.target as Node)
+        !moreMenuRef.current.contains(e.target as Node) &&
+        (!moreMenuMobileRef.current || !moreMenuMobileRef.current.contains(e.target as Node))
       ) {
         setShowMore(false);
       }
@@ -602,7 +604,7 @@ export default function Navbar() {
         })}
 
         {/* Przycisk "Więcej" na mobile */}
-        <div ref={moreMenuRef} className="relative">
+        <div ref={moreMenuMobileRef} className="relative">
           <button
             type="button"
             onClick={() => setShowMore(!showMore)}
