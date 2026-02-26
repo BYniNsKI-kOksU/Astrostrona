@@ -27,7 +27,7 @@ const themes: { id: Theme; label: string; icon: string; desc: string }[] = [
 export default function SettingsPage() {
   const { theme, setTheme, fontSize, setFontSize, reducedMotion, setReducedMotion } =
     useTheme();
-  const { logout } = useAuth();
+  const { logout, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
   const [notifLikes, setNotifLikes] = useState(true);
@@ -38,6 +38,25 @@ export default function SettingsPage() {
   const [showEquipment, setShowEquipment] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
   const [language, setLanguage] = useState("pl");
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
+        <div className="glass-card p-6 animate-pulse">
+          <div className="h-8 bg-night-800 rounded w-48 mb-4" />
+          <div className="space-y-3">
+            <div className="h-4 bg-night-800 rounded w-full" />
+            <div className="h-4 bg-night-800 rounded w-2/3" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    router.push("/login?redirect=/settings");
+    return null;
+  }
 
   const saveSettings = () => {
     setShowSuccess(true);

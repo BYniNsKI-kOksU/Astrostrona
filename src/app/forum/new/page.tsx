@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { HiOutlineArrowLeft, HiOutlinePhoto, HiOutlineXMark, HiOutlineArrowsPointingOut } from "react-icons/hi2";
 import { FORUM_CATEGORIES } from "@/lib/constants";
+import { useAuth } from "@/components/providers";
+import { useToast } from "@/components/ui";
 import clsx from "clsx";
 
 interface ImagePreview {
@@ -21,6 +24,9 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function NewPostPage() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const { addToast } = useToast();
+  const router = useRouter();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("general");
@@ -124,6 +130,27 @@ export default function NewPostPage() {
     // Reset input, żeby ten sam plik można było wybrać ponownie
     e.target.value = "";
   };
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
+        <div className="glass-card p-6 animate-pulse">
+          <div className="h-8 bg-night-800 rounded w-48 mb-6" />
+          <div className="space-y-4">
+            <div className="h-10 bg-night-800 rounded w-full" />
+            <div className="h-32 bg-night-800 rounded w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Niezalogowany — redirect
+  if (!isAuthenticated || !user) {
+    router.push("/login?redirect=/forum/new");
+    return null;
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
@@ -355,7 +382,30 @@ export default function NewPostPage() {
           <Link href="/forum" className="btn-ghost">
             Anuluj
           </Link>
-          <button className="btn-primary">Opublikuj post</button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!title.trim() || !content.trim()) {
+                addToast({
+                  type: "error",
+                  title: "Brakujące pola",
+                  message: "Podaj tytuł i treść posta.",
+                  duration: 4000,
+                });
+                return;
+              }
+              addToast({
+                type: "success",
+                title: "Post opublikowany!",
+                message: "Twój post jest teraz widoczny na forum.",
+                duration: 4000,
+              });
+              router.push("/forum");
+            }}
+            className="btn-primary"
+          >
+            Opublikuj post
+          </button>
         </div>
       </div>
     </div>

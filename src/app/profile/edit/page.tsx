@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/components/providers";
 import { mockUsers } from "@/data";
 import {
   HiOutlineArrowLeft,
@@ -10,19 +12,46 @@ import {
 } from "react-icons/hi2";
 
 export default function EditProfilePage() {
-  const user = mockUsers[0];
+  const { user: authUser, isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
 
-  const [displayName, setDisplayName] = useState(user.displayName);
-  const [username, setUsername] = useState(user.username);
-  const [bio, setBio] = useState(user.bio);
-  const [location, setLocation] = useState("Bieszczady, Polska");
+  // Szukamy pełnych danych użytkownika (mock) — fallback na dane z auth
+  const user = authUser
+    ? mockUsers.find((u) => u.id === authUser.id) || authUser
+    : null;
+
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  const [username, setUsername] = useState(user?.username || "");
+  const [bio, setBio] = useState(user?.bio || "");
+  const [location, setLocation] = useState("");
   const [website, setWebsite] = useState("");
-  const [telescope, setTelescope] = useState("GSO Newton 200/800");
-  const [camera, setCamera] = useState("ZWO ASI2600MM Pro");
-  const [mount, setMount] = useState("Sky-Watcher EQ6-R Pro");
+  const [telescope, setTelescope] = useState("");
+  const [camera, setCamera] = useState("");
+  const [mount, setMount] = useState("");
   const [showSuccess, setShowSuccess] = useState(false);
-  const [email, setEmail] = useState("marek@astrofor.pl");
+  const [email, setEmail] = useState("");
   const [emailNotifs, setEmailNotifs] = useState(true);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8">
+        <div className="glass-card p-6 animate-pulse">
+          <div className="h-6 bg-night-800 rounded w-48 mb-4" />
+          <div className="space-y-3">
+            <div className="h-4 bg-night-800 rounded w-full" />
+            <div className="h-4 bg-night-800 rounded w-2/3" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Niezalogowany — redirect
+  if (!isAuthenticated || !user) {
+    router.push("/login?redirect=/profile/edit");
+    return null;
+  }
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();

@@ -20,6 +20,9 @@ import {
   HiOutlineCog6Tooth,
   HiOutlinePencilSquare,
   HiOutlineArrowRightOnRectangle,
+  HiOutlineSparkles,
+  HiOutlineEllipsisHorizontal,
+  HiOutlineChevronDown,
 } from "react-icons/hi2";
 import clsx from "clsx";
 import { useAuth } from "@/components/providers";
@@ -35,15 +38,24 @@ const SUBREDDITS = [
   { slug: "ogolne", label: "a/ogolne", icon: "💬", desc: "Wszystko inne" },
 ];
 
-const navItems = [
+// Główne linki widoczne w navbarze
+const mainNavItems = [
   { href: "/", label: "Strona główna", icon: HiOutlineHome },
   { href: "/forum", label: "Forum", icon: HiOutlineChatBubbleLeftRight },
   { href: "/gallery", label: "Galeria", icon: HiOutlinePhoto },
-  { href: "/achievements", label: "Osiągnięcia", icon: HiOutlineTrophy },
-  { href: "/map", label: "Mapa", icon: HiOutlineMapPin },
   { href: "/news", label: "Newsy", icon: HiOutlineNewspaper },
   { href: "/science", label: "Nauka", icon: HiOutlineBeaker },
 ];
+
+// Zwinięte w dropdown "Więcej"
+const moreNavItems = [
+  { href: "/map", label: "Mapa spotów", icon: HiOutlineMapPin },
+  { href: "/weather", label: "Warunki obserwacyjne", icon: HiOutlineSparkles },
+  { href: "/achievements", label: "Osiągnięcia", icon: HiOutlineTrophy },
+];
+
+// Wszystkie razem (do mobilnej nawigacji)
+const allNavItems = [...mainNavItems, ...moreNavItems];
 
 const mockNotifications = [
   {
@@ -90,12 +102,14 @@ export default function Navbar() {
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState(mockNotifications);
   const searchRef = useRef<HTMLInputElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -119,6 +133,12 @@ export default function Navbar() {
         !profileMenuRef.current.contains(e.target as Node)
       ) {
         setShowProfileMenu(false);
+      }
+      if (
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowMore(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -187,7 +207,7 @@ export default function Navbar() {
 
           {/* Nawigacja główna */}
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
+            {mainNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/" && pathname.startsWith(item.href));
@@ -207,6 +227,58 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {/* Dropdown "Więcej" */}
+            <div ref={moreMenuRef} className="relative">
+              <button
+                onClick={() => {
+                  setShowMore(!showMore);
+                  setShowSearch(false);
+                  setShowNotifications(false);
+                  setShowProfileMenu(false);
+                }}
+                className={clsx(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200",
+                  moreNavItems.some(
+                    (item) =>
+                      pathname === item.href ||
+                      (item.href !== "/" && pathname.startsWith(item.href))
+                  )
+                    ? "bg-cosmos-500/20 text-cosmos-300"
+                    : "text-night-400 hover:text-night-100 hover:bg-night-800"
+                )}
+              >
+                <HiOutlineEllipsisHorizontal className="h-5 w-5" />
+                Więcej
+                <HiOutlineChevronDown className={clsx("h-3 w-3 transition-transform", showMore && "rotate-180")} />
+              </button>
+
+              {showMore && (
+                <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-night-700 shadow-2xl z-50 bg-night-950/95 backdrop-blur-xl py-2">
+                  {moreNavItems.map((item) => {
+                    const isActive =
+                      pathname === item.href ||
+                      (item.href !== "/" && pathname.startsWith(item.href));
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setShowMore(false)}
+                        className={clsx(
+                          "flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors",
+                          isActive
+                            ? "text-cosmos-300 bg-cosmos-500/10"
+                            : "text-night-400 hover:text-night-200 hover:bg-night-800/50"
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </nav>
 
           {/* Prawa strona */}
@@ -214,18 +286,28 @@ export default function Navbar() {
             {/* Wyszukiwarka */}
             <div ref={searchPanelRef} className="relative">
               <button
+                type="button"
                 onClick={() => {
                   setShowSearch(!showSearch);
                   setShowNotifications(false);
+                  setShowProfileMenu(false);
+                  setShowMore(false);
                 }}
-                className="btn-ghost p-2 rounded-lg"
+                className="btn-ghost p-2 rounded-lg relative z-10"
+                aria-label="Wyszukiwarka"
               >
                 <HiOutlineMagnifyingGlass className="h-5 w-5" />
               </button>
 
               {/* Panel wyszukiwania */}
               {showSearch && (
-                <div className="fixed inset-x-0 top-16 mx-auto max-w-lg px-4 sm:px-0 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 z-50">
+                <>
+                  {/* Overlay do zamykania na mobile */}
+                  <div
+                    className="fixed inset-0 z-40 sm:hidden"
+                    onClick={() => setShowSearch(false)}
+                  />
+                  <div className="fixed inset-x-0 top-16 mx-auto max-w-lg px-4 sm:px-0 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 z-50">
                   <div className="rounded-xl border border-night-700 shadow-2xl p-4 bg-night-950/95 backdrop-blur-xl">
                   <form onSubmit={handleSearch}>
                     <div className="flex items-center gap-2 mb-3">
@@ -319,6 +401,7 @@ export default function Navbar() {
                   )}
                   </div>
                 </div>
+                </>
               )}
             </div>
 
@@ -434,6 +517,7 @@ export default function Navbar() {
                   {[
                     { href: "/profile", label: "Mój profil", icon: HiOutlineUserCircle },
                     { href: "/profile/edit", label: "Edytuj profil", icon: HiOutlinePencilSquare },
+                    { href: "/achievements", label: "Osiągnięcia", icon: HiOutlineTrophy },
                     { href: "/saved", label: "Zapisane", icon: HiOutlineBookmark },
                     { href: "/settings", label: "Ustawienia", icon: HiOutlineCog6Tooth },
                   ].map((item) => (
@@ -467,13 +551,23 @@ export default function Navbar() {
             <div className="flex items-center gap-2">
               <Link
                 href="/login"
-                className="btn-ghost text-sm px-3 py-2 rounded-lg"
+                onClick={() => {
+                  setShowSearch(false);
+                  setShowNotifications(false);
+                  setShowMore(false);
+                }}
+                className="btn-ghost text-sm px-3 py-2 rounded-lg relative z-10"
               >
                 Zaloguj się
               </Link>
               <Link
                 href="/register"
-                className="hidden sm:flex btn-primary text-sm px-3 py-2"
+                onClick={() => {
+                  setShowSearch(false);
+                  setShowNotifications(false);
+                  setShowMore(false);
+                }}
+                className="hidden sm:flex btn-primary text-sm px-3 py-2 relative z-10"
               >
                 Rejestracja
               </Link>
@@ -485,7 +579,8 @@ export default function Navbar() {
 
       {/* Mobilna nawigacja */}
       <nav className="md:hidden flex items-center justify-evenly border-t border-night-800 py-1.5 px-2">
-        {navItems.slice(0, 5).map((item) => {
+        {/* Główne 4 linki */}
+        {[mainNavItems[0], mainNavItems[1], mainNavItems[2], mainNavItems[3]].map((item) => {
           const isActive =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
@@ -505,6 +600,57 @@ export default function Navbar() {
             </Link>
           );
         })}
+
+        {/* Przycisk "Więcej" na mobile */}
+        <div className="relative">
+          <button
+            onClick={() => setShowMore(!showMore)}
+            className={clsx(
+              "flex flex-col items-center justify-center gap-0.5 min-w-[3rem] px-2 py-1 rounded-lg text-[10px] transition-colors",
+              moreNavItems.some(
+                (item) =>
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href))
+              ) || [mainNavItems[4]].some(
+                (item) =>
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href))
+              )
+                ? "text-cosmos-400"
+                : "text-night-500 hover:text-night-300"
+            )}
+          >
+            <HiOutlineEllipsisHorizontal className="h-5 w-5" />
+            <span className="truncate">Więcej</span>
+          </button>
+
+          {showMore && (
+            <div className="absolute bottom-full right-0 mb-2 w-52 rounded-xl border border-night-700 shadow-2xl z-50 bg-night-950/95 backdrop-blur-xl py-2">
+              {/* Nauka (5-ty mainNav) + moreNavItems */}
+              {[mainNavItems[4], ...moreNavItems].map((item) => {
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href));
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setShowMore(false)}
+                    className={clsx(
+                      "flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors",
+                      isActive
+                        ? "text-cosmos-300 bg-cosmos-500/10"
+                        : "text-night-400 hover:text-night-200 hover:bg-night-800/50"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </nav>
     </header>
   );

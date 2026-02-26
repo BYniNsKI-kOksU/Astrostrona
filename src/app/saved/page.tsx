@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { mockPosts, mockImages } from "@/data";
 import { PostCard } from "@/components/post";
+import { useAuth } from "@/components/providers";
 import {
   HiOutlineBookmark,
   HiOutlinePhoto,
@@ -20,7 +22,25 @@ const savedImages = mockImages.filter((_, i) => i < 4);
 type Tab = "posts" | "images";
 
 export default function SavedPage() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("posts");
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
+        <div className="glass-card p-6 animate-pulse">
+          <div className="h-8 bg-night-800 rounded w-48 mb-4" />
+          <div className="h-4 bg-night-800 rounded w-64" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    router.push("/login?redirect=/saved");
+    return null;
+  }
 
   const tabs = [
     {

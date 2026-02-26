@@ -47,6 +47,7 @@ if (typeof globalThis !== "undefined") {
 // Ścieżki wymagające zalogowania
 // =============================================
 const PROTECTED_PATHS = [
+  "/profile",
   "/profile/edit",
   "/forum/new",
   "/saved",
@@ -84,19 +85,41 @@ export function middleware(request: NextRequest) {
   // 2. Ochrona ścieżek — sprawdzamy cookie auth
   if (isProtectedPath(pathname)) {
     const authCookie = request.cookies.get("astrofor-auth");
+    const hasValidAuth = authCookie?.value && 
+      authCookie.value.trim() !== "" && 
+      authCookie.value !== "undefined" && 
+      authCookie.value !== "null" &&
+      authCookie.value.length >= 2;
 
-    if (!authCookie?.value) {
+    if (!hasValidAuth) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(loginUrl);
+      // Wyczyść śmieciowe cookie jeśli istnieje
+      const response = NextResponse.redirect(loginUrl);
+      if (authCookie) {
+        response.cookies.set("astrofor-auth", "", { path: "/", maxAge: 0 });
+      }
+      return response;
     }
   }
 
   // 3. Jeśli użytkownik zalogowany i próbuje wejść na /login lub /register — redirect na stronę główną
   if (pathname === "/login" || pathname === "/register") {
     const authCookie = request.cookies.get("astrofor-auth");
-    if (authCookie?.value) {
+    // Sprawdzamy czy cookie ma sensowną wartość (nie pustą, nie "undefined", nie "null")
+    const hasValidAuth = authCookie?.value && 
+      authCookie.value.trim() !== "" && 
+      authCookie.value !== "undefined" && 
+      authCookie.value !== "null" &&
+      authCookie.value.length >= 2;
+    if (hasValidAuth) {
       return NextResponse.redirect(new URL("/", request.url));
+    }
+    // Jeśli cookie jest śmieciowe — wyczyść je
+    if (authCookie && !hasValidAuth) {
+      const response = NextResponse.next();
+      response.cookies.set("astrofor-auth", "", { path: "/", maxAge: 0 });
+      return response;
     }
   }
 
