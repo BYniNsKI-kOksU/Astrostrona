@@ -602,11 +602,13 @@ export default function Navbar() {
         })}
 
         {/* Przycisk "Więcej" na mobile */}
-        <div className="relative">
+        <div ref={moreMenuRef} className="relative">
           <button
+            type="button"
             onClick={() => setShowMore(!showMore)}
             className={clsx(
               "flex flex-col items-center justify-center gap-0.5 min-w-[3rem] px-2 py-1 rounded-lg text-[10px] transition-colors",
+              showMore ||
               moreNavItems.some(
                 (item) =>
                   pathname === item.href ||
@@ -624,8 +626,9 @@ export default function Navbar() {
             <span className="truncate">Więcej</span>
           </button>
 
+          {/* Panel "Więcej" na mobile — ten sam styl co inne dropdowny */}
           {showMore && (
-            <div className="absolute bottom-full right-0 mb-2 w-52 rounded-xl border border-night-700 shadow-2xl z-50 bg-night-950/95 backdrop-blur-xl py-2">
+            <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-night-700 shadow-2xl z-50 bg-night-950/95 backdrop-blur-xl py-2">
               {/* Nauka (5-ty mainNav) + moreNavItems */}
               {[mainNavItems[4], ...moreNavItems].map((item) => {
                 const isActive =
