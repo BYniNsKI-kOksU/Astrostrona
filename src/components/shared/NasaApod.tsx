@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   HiOutlineArrowTopRightOnSquare,
+  HiOutlineArrowPath,
   HiOutlineCalendarDays,
   HiOutlineSparkles,
 } from "react-icons/hi2";
@@ -34,52 +35,67 @@ export default function NasaApod() {
   const [apod, setApod] = useState<APODData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchAPOD = async () => {
-      try {
-        // NASA APOD API (demo key — rate limited)
-        const res = await fetch(
-          "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY"
-        );
-        if (!res.ok) throw new Error("API error");
-        const data: APODData = await res.json();
-        setApod(data);
-      } catch {
-        // Fallback na demo dane
-        setApod(FALLBACK_APOD);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchAPOD = useCallback(async (skipCache = false) => {
+    try {
+      // Sprawdź cache (chyba że wymuszamy odświeżenie)
+      if (!skipCache) {
+        const cached = sessionStorage.getItem("astrofor-apod");
+        const cachedDate = sessionStorage.getItem("astrofor-apod-date");
+        const today = new Date().toISOString().split("T")[0];
 
-    // Cache w sessionStorage (1 dzień)
-    const cached = sessionStorage.getItem("astrofor-apod");
-    const cachedDate = sessionStorage.getItem("astrofor-apod-date");
-    const today = new Date().toISOString().split("T")[0];
-
-    if (cached && cachedDate === today) {
-      setApod(JSON.parse(cached));
-      setLoading(false);
-    } else {
-      fetchAPOD().then(() => {
-        // Cache po załadowaniu
-        const current = sessionStorage.getItem("astrofor-apod");
-        if (!current) {
-          // setApod already happened, save it
+        if (cached && cachedDate === today) {
+          const parsed = JSON.parse(cached);
+          // Upewnij się, że cache nie zawiera danych fallback
+          if (parsed.url && parsed.url !== FALLBACK_APOD.url) {
+            setApod(parsed);
+            setLoading(false);
+            return;
+          }
         }
-      });
+      }
+
+      // Pobierz z naszego API route (serwer próbuje NASA API, a jak limit — parsuje stronę APOD)
+      const res = await fetch("/api/apod");
+      if (!res.ok) throw new Error("API error");
+      const data: APODData = await res.json();
+      if (data.url) {
+        setApod(data);
+        // Zapisz do cache
+        const today = new Date().toISOString().split("T")[0];
+        sessionStorage.setItem("astrofor-apod", JSON.stringify(data));
+        sessionStorage.setItem("astrofor-apod-date", today);
+      } else {
+        throw new Error("No image URL");
+      }
+    } catch {
+      // Fallback na demo dane
+      setApod(FALLBACK_APOD);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
-  // Save to session when we have data
   useEffect(() => {
-    if (apod) {
-      const today = new Date().toISOString().split("T")[0];
-      sessionStorage.setItem("astrofor-apod", JSON.stringify(apod));
-      sessionStorage.setItem("astrofor-apod-date", today);
-    }
-  }, [apod]);
+    fetchAPOD(false);
+
+    // Auto-odświeżanie co 60 minut — APOD zmienia się raz dziennie
+    const interval = setInterval(() => {
+      fetchAPOD(true);
+    }, 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [fetchAPOD]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    // Wyczyść cache i pobierz na nowo
+    sessionStorage.removeItem("astrofor-apod");
+    sessionStorage.removeItem("astrofor-apod-date");
+    fetchAPOD(true);
+  };
 
   if (loading) {
     return (
@@ -111,6 +127,14 @@ export default function NasaApod() {
           NASA — Zdjęcie Dnia
         </span>
         <div className="flex-1" />
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="p-1 rounded-md text-night-500 hover:text-night-300 hover:bg-night-800/50 transition-all disabled:opacity-50"
+          title="Odśwież zdjęcie"
+        >
+          <HiOutlineArrowPath className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
         <div className="flex items-center gap-1 text-xs text-night-500">
           <HiOutlineCalendarDays className="h-3.5 w-3.5" />
           {apod.date}

@@ -715,12 +715,14 @@ export default function WeatherPage() {
     setQuery(loc.name);
 
     // Check cache
-    const cacheKey = `astrofor-weather-${loc.lat.toFixed(2)}-${loc.lng.toFixed(2)}`;
+    // Cache key z precyzją 1 miejsca (~11km) — bliscy sąsiedzi trafią w ten sam cache
+    // Open-Meteo i tak interpoluje do siatki ~11km, więc wyższa precyzja nie ma sensu
+    const cacheKey = `astrofor-weather-${loc.lat.toFixed(1)}-${loc.lng.toFixed(1)}`;
     const cached = sessionStorage.getItem(cacheKey);
     const cacheTime = sessionStorage.getItem(cacheKey + "-time");
 
-    if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 30 * 60 * 1000) {
-      // Use cache (30 min)
+    if (cached && cacheTime && Date.now() - parseInt(cacheTime) < 10 * 60 * 1000) {
+      // Use cache (10 min — pogoda zmienia się szybko)
       const parsed = JSON.parse(cached);
       setWeather(parsed.weather);
       setForecast(parsed.forecast);
@@ -785,6 +787,36 @@ export default function WeatherPage() {
     }
   }, []);
 
+  // Obsługa Enter — wyszukaj i załaduj pierwszy wynik
+  const handleSearchSubmit = useCallback(async () => {
+    if (!query || query.length < 2) return;
+    setIsSearching(true);
+    setShowDropdown(false);
+    try {
+      const res = await fetch(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=pl&format=json`
+      );
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const r = data.results[0];
+        const loc: LocationResult = {
+          name: r.name,
+          country: r.country || "",
+          admin1: r.admin1 || "",
+          lat: r.latitude,
+          lng: r.longitude,
+        };
+        fetchWeather(loc);
+      } else {
+        setError("Nie znaleziono miejscowości. Spróbuj innej nazwy.");
+      }
+    } catch {
+      setError("Błąd wyszukiwania. Sprawdź połączenie z internetem.");
+    } finally {
+      setIsSearching(false);
+    }
+  }, [query, fetchWeather]);
+
   // Geolocation
   const useMyLocation = useCallback(() => {
     setError("");
@@ -792,29 +824,52 @@ export default function WeatherPage() {
       setError("Geolokalizacja nie jest dostępna w tej przeglądarce.");
       return;
     }
+
+    // Sprawdź cache lokalizacji (stałe współrzędne na sesję)
+    const cachedGeo = sessionStorage.getItem("astrofor-geo-coords");
+    if (cachedGeo) {
+      try {
+        const { lat, lng, name, country } = JSON.parse(cachedGeo);
+        const loc: LocationResult = { name, country: country || "", lat, lng };
+        fetchWeather(loc);
+        return;
+      } catch {
+        sessionStorage.removeItem("astrofor-geo-coords");
+      }
+    }
+
     setIsLoading(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        // Użyj pełnej precyzji z GPS/przeglądarki
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy; // w metrach
 
-        // Reverse geocoding — spróbuj uzyskać nazwę miejscowości
+        // Reverse geocoding z Nominatim (OpenStreetMap) — prawdziwy reverse geocoder
         let name = "Twoja lokalizacja";
+        let country = "";
         try {
           const geoRes = await fetch(
-            `https://geocoding-api.open-meteo.com/v1/search?name=${lat.toFixed(1)},${lng.toFixed(1)}&count=1&language=pl&format=json`
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=14&accept-language=pl`,
+            { headers: { "User-Agent": "Astrofor/1.0" } }
           );
           const geoData = await geoRes.json();
-          if (geoData.results?.[0]?.name) {
-            name = geoData.results[0].name;
+          if (geoData.address) {
+            const addr = geoData.address;
+            name = addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || "Twoja lokalizacja";
+            country = addr.country || "";
           }
         } catch {
           // Ignore — use default name
         }
 
+        // Cache współrzędne na czas sesji
+        sessionStorage.setItem("astrofor-geo-coords", JSON.stringify({ lat, lng, name, country }));
+
         const loc: LocationResult = {
-          name,
-          country: "Polska",
+          name: accuracy > 1000 ? `${name} (±${Math.round(accuracy / 1000)} km)` : name,
+          country,
           lat,
           lng,
         };
@@ -832,7 +887,7 @@ export default function WeatherPage() {
         setError(msg);
         setIsLoading(false);
       },
-      { timeout: 15000, enableHighAccuracy: false }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 300000 }
     );
   }, [fetchWeather]);
 
@@ -860,6 +915,17 @@ export default function WeatherPage() {
                 type="text"
                 value={query}
                 onChange={(e) => handleQueryChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    // Jeśli dropdown jest otwarty i ma wyniki — wybierz pierwszy
+                    if (showDropdown && locations.length > 0) {
+                      fetchWeather(locations[0]);
+                    } else {
+                      handleSearchSubmit();
+                    }
+                  }
+                }}
                 onFocus={() => locations.length > 0 && setShowDropdown(true)}
                 placeholder="Wpisz nazwę miejscowości..."
                 className="input-field pl-10 w-full"
@@ -871,6 +937,16 @@ export default function WeatherPage() {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              onClick={handleSearchSubmit}
+              disabled={isLoading || !query || query.length < 2}
+              className="btn-primary flex items-center gap-2 shrink-0 disabled:opacity-50"
+              title="Szukaj"
+            >
+              <HiOutlineMagnifyingGlass className="h-5 w-5" />
+              <span className="hidden sm:inline">Szukaj</span>
+            </button>
             <button
               type="button"
               onClick={useMyLocation}
@@ -939,6 +1015,8 @@ export default function WeatherPage() {
             </span>
             <span className="text-night-600">•</span>
             <span>{selectedLocation.lat.toFixed(2)}°N, {selectedLocation.lng.toFixed(2)}°E</span>
+            <span className="text-night-600">•</span>
+            <span className="text-night-500 text-xs">Open-Meteo</span>
             <span className="text-night-600">•</span>
             <span className="flex items-center gap-1">
               {weather.isDay ? (
