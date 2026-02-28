@@ -47,17 +47,21 @@ export default function NasaApod() {
 
         if (cached && cachedDate === today) {
           const parsed = JSON.parse(cached);
-          // Upewnij się, że cache nie zawiera danych fallback
+          // Upewnij się, że cache nie zawiera danych fallback i jest z dzisiaj
           if (parsed.url && parsed.url !== FALLBACK_APOD.url) {
             setApod(parsed);
             setLoading(false);
             return;
           }
+        } else {
+          // Stary cache — wyczyść, żeby pobrać na nowo
+          sessionStorage.removeItem("astrofor-apod");
+          sessionStorage.removeItem("astrofor-apod-date");
         }
       }
 
-      // Pobierz z naszego API route (serwer próbuje NASA API, a jak limit — parsuje stronę APOD)
-      const res = await fetch("/api/apod");
+      // Pobierz z naszego API route (parsuje stronę APOD lub NASA API)
+      const res = await fetch("/api/apod", { cache: "no-store" });
       if (!res.ok) throw new Error("API error");
       const data: APODData = await res.json();
       if (data.url) {

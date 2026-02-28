@@ -1,4 +1,32 @@
 import Link from "next/link";
+import { FaFacebookF, FaInstagram, FaDiscord, FaXTwitter } from "react-icons/fa6";
+
+const socialLinks = [
+  {
+    href: "https://facebook.com/",
+    label: "Facebook",
+    icon: FaFacebookF,
+    hoverColor: "hover:text-blue-400 hover:bg-blue-500/10",
+  },
+  {
+    href: "https://instagram.com/",
+    label: "Instagram",
+    icon: FaInstagram,
+    hoverColor: "hover:text-pink-400 hover:bg-pink-500/10",
+  },
+  {
+    href: "https://discord.gg/",
+    label: "Discord",
+    icon: FaDiscord,
+    hoverColor: "hover:text-indigo-400 hover:bg-indigo-500/10",
+  },
+  {
+    href: "https://x.com/",
+    label: "X (Twitter)",
+    icon: FaXTwitter,
+    hoverColor: "hover:text-night-100 hover:bg-night-700/50",
+  },
+];
 
 export default function Footer() {
   return (
@@ -54,8 +82,31 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-night-800 text-center text-sm text-night-500">
-          © {new Date().getFullYear()} Astrofor. Stworzone z ❤️ dla miłośników kosmosu.
+        <div className="mt-8 pt-6 border-t border-night-800">
+          {/* Social Media */}
+          <div className="flex flex-col items-center gap-4 mb-6">
+            <h3 className="text-sm font-semibold text-night-300">Znajdź nas w mediach społecznościowych</h3>
+            <div className="flex items-center gap-3">
+              {socialLinks.map((social) => (
+                <a
+                  key={social.label}
+                  href={social.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`p-2.5 rounded-xl border border-night-700 bg-night-900/50 text-night-400 transition-all duration-200 ${social.hoverColor}`}
+                  title={social.label}
+                  aria-label={social.label}
+                >
+                  <social.icon className="h-5 w-5" />
+                </a>
+              ))}
+            </div>
+          </div>
+
+          {/* Copyright */}
+          <div className="text-center text-sm text-night-500">
+            © {new Date().getFullYear()} Astrofor. Stworzone z ❤️ dla miłośników kosmosu.
+          </div>
         </div>
       </div>
     </footer>

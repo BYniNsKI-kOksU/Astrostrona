@@ -107,6 +107,9 @@ function estimateBortle(lat: number, lng: number): number {
     { lat: 50.29, lng: 18.67, coreBortle: 6, coreR: 0.03, pop: 190000 },  // Gliwice
     { lat: 51.77, lng: 19.46, coreBortle: 5, coreR: 0.02, pop: 100000 },  // Pabianice/Zgierz
     { lat: 52.23, lng: 20.46, coreBortle: 5, coreR: 0.02, pop: 80000 },   // Pruszków/Grodzisk
+    { lat: 52.25, lng: 17.10, coreBortle: 5, coreR: 0.02, pop: 25000 },   // Kórnik
+    { lat: 52.46, lng: 16.82, coreBortle: 5, coreR: 0.02, pop: 20000 },   // Oborniki
+    { lat: 52.20, lng: 16.60, coreBortle: 5, coreR: 0.02, pop: 30000 },   // Kościan
   ];
 
   // Ciemne strefy — obniżają Bortle w tych regionach
@@ -348,28 +351,34 @@ function analyzeConditions(
   // Cloud score (0-100, 100 = clear)
   const cloudScore = Math.max(0, 100 - weather.cloudCover);
 
-  // Humidity score (ideal: 30-60%)
+  // Humidity score (ideal: 30-65%, astronomia toleruje do 80%)
   const humidityScore =
     weather.humidity < 30
       ? 90
       : weather.humidity < 50
       ? 100
-      : weather.humidity < 70
+      : weather.humidity < 65
+      ? 85
+      : weather.humidity < 75
       ? 70
       : weather.humidity < 85
-      ? 40
+      ? 50
+      : weather.humidity < 92
+      ? 30
       : 10;
 
-  // Wind score (ideal: < 15 km/h)
+  // Wind score (ideal: < 15 km/h, tolerancja do 25 km/h)
   const windScore =
     weather.windSpeed < 5
       ? 100
       : weather.windSpeed < 10
-      ? 90
+      ? 95
+      : weather.windSpeed < 15
+      ? 85
       : weather.windSpeed < 20
       ? 70
       : weather.windSpeed < 30
-      ? 40
+      ? 45
       : 10;
 
   // Seeing score (based on wind + humidity + temp-dewpoint spread)
@@ -384,14 +393,18 @@ function analyzeConditions(
   );
 
   // Transparency score (based on humidity, visibility, precipitation)
-  const visScore = Math.min(100, (weather.visibility / 50) * 100);
-  const precipScore = weather.precipitation === 0 ? 100 : 0;
+  // Visibility > 20 km = doskonałe, > 10 km = bardzo dobre
+  const visScore = Math.min(100, weather.visibility >= 30 ? 100 : weather.visibility >= 20 ? 95 : weather.visibility >= 10 ? 85 : (weather.visibility / 10) * 85);
+  const precipScore = weather.precipitation === 0 ? 100 : weather.precipitation < 0.1 ? 50 : 0;
   const transparencyScore = Math.round(
     visScore * 0.4 + humidityScore * 0.3 + precipScore * 0.3
   );
 
-  // Bortle penalty
-  const bortlePenalty = (bortle - 1) * 5; // 0-40
+  // Bortle penalty — ZREDUKOWANE: Bortle szkodzi głównie deep-sky i wizualnym,
+  // ale ogólna ocena nie powinna być zdominowana przez LP
+  // Stara formuła: (bortle-1)*5 = do 40 pkt kary — ZBYT DUŻO
+  // Nowa: łagodna kara logarytmiczna, max ~15 pkt
+  const bortlePenalty = Math.min(15, Math.round(Math.pow(bortle - 1, 1.3) * 1.2));
 
   // Overall score
   const overallScore = Math.max(
@@ -400,9 +413,9 @@ function analyzeConditions(
       100,
       Math.round(
         cloudScore * 0.35 +
-          seeingScore * 0.2 +
-          transparencyScore * 0.2 +
-          humidityScore * 0.1 +
+          seeingScore * 0.20 +
+          transparencyScore * 0.20 +
+          humidityScore * 0.10 +
           windScore * 0.15 -
           bortlePenalty
       )
@@ -825,18 +838,9 @@ export default function WeatherPage() {
       return;
     }
 
-    // Sprawdź cache lokalizacji (stałe współrzędne na sesję)
-    const cachedGeo = sessionStorage.getItem("astrofor-geo-coords");
-    if (cachedGeo) {
-      try {
-        const { lat, lng, name, country } = JSON.parse(cachedGeo);
-        const loc: LocationResult = { name, country: country || "", lat, lng };
-        fetchWeather(loc);
-        return;
-      } catch {
-        sessionStorage.removeItem("astrofor-geo-coords");
-      }
-    }
+    // Zawsze pobierz świeżą pozycję — nie cachuj w sessionStorage
+    // (użytkownik może zmienić lokalizację lub poprawić GPS)
+    sessionStorage.removeItem("astrofor-geo-coords");
 
     setIsLoading(true);
     navigator.geolocation.getCurrentPosition(
@@ -864,11 +868,8 @@ export default function WeatherPage() {
           // Ignore — use default name
         }
 
-        // Cache współrzędne na czas sesji
-        sessionStorage.setItem("astrofor-geo-coords", JSON.stringify({ lat, lng, name, country }));
-
         const loc: LocationResult = {
-          name: accuracy > 1000 ? `${name} (±${Math.round(accuracy / 1000)} km)` : name,
+          name: accuracy > 5000 ? `${name} (±${Math.round(accuracy / 1000)} km)` : name,
           country,
           lat,
           lng,
@@ -887,7 +888,7 @@ export default function WeatherPage() {
         setError(msg);
         setIsLoading(false);
       },
-      { timeout: 15000, enableHighAccuracy: true, maximumAge: 300000 }
+      { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }
     );
   }, [fetchWeather]);
 

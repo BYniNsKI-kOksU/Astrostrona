@@ -22,13 +22,31 @@ let cachedAt = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 godzina
 
 export async function GET() {
-  // Sprawdź cache serwerowy
-  if (cachedData && Date.now() - cachedAt < CACHE_TTL) {
+  // Sprawdź cache serwerowy — ale waliduj datę (APOD zmienia się codziennie)
+  const todayStr = new Date().toISOString().split("T")[0];
+  if (cachedData && cachedData.date === todayStr && Date.now() - cachedAt < CACHE_TTL) {
     return NextResponse.json(cachedData);
   }
 
   try {
-    // Najpierw spróbuj NASA API z DEMO_KEY
+    // Priorytet 1: Parsuj bezpośrednio stronę APOD HTML — zawsze aktualna, brak limitów
+    try {
+      const html = await fetch("https://apod.nasa.gov/apod/astropix.html", {
+        next: { revalidate: 1800 },
+        headers: { "User-Agent": "Astrofor/1.0 (astronomy community)" },
+      }).then((r) => r.text());
+
+      const data = parseApodHtml(html);
+      if (data && data.url) {
+        cachedData = data;
+        cachedAt = Date.now();
+        return NextResponse.json(data);
+      }
+    } catch {
+      // Parsowanie się nie powiodło — spróbuj API
+    }
+
+    // Priorytet 2: NASA API z DEMO_KEY (może mieć limity 30-50 req/h)
     const apiRes = await fetch(
       "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY",
       { next: { revalidate: 3600 } }
@@ -36,21 +54,11 @@ export async function GET() {
 
     if (apiRes.ok) {
       const data: APODData = await apiRes.json();
-      cachedData = data;
-      cachedAt = Date.now();
-      return NextResponse.json(data);
-    }
-
-    // Fallback: parsuj stronę APOD HTML
-    const html = await fetch("https://apod.nasa.gov/apod/astropix.html", {
-      next: { revalidate: 3600 },
-    }).then((r) => r.text());
-
-    const data = parseApodHtml(html);
-    if (data) {
-      cachedData = data;
-      cachedAt = Date.now();
-      return NextResponse.json(data);
+      if (data.url) {
+        cachedData = data;
+        cachedAt = Date.now();
+        return NextResponse.json(data);
+      }
     }
 
     return NextResponse.json(
@@ -67,25 +75,37 @@ export async function GET() {
 
 function parseApodHtml(html: string): APODData | null {
   try {
-    // Wyciągnij tytuł — szukaj <b> tagów z czystym tekstem
-    const titleRegex = /<b>([^<]+)<\/b>/g;
+    // Wyciągnij tytuł — APOD HTML ma format: <center><b> Title </b></center>
+    // Tytuł pojawia się po sekcji z obrazem, zazwyczaj w <center><b>...</b>
     let title = "Astronomy Picture of the Day";
-    let boldMatch: RegExpExecArray | null;
-    while ((boldMatch = titleRegex.exec(html)) !== null) {
-      const content = boldMatch[1].trim();
-      if (
-        content.length > 3 &&
-        content.length < 200 &&
-        !content.toLowerCase().includes("astronomy picture") &&
-        !content.toLowerCase().includes("tomorrow") &&
-        !content.toLowerCase().includes("archive") &&
-        !content.toLowerCase().includes("authors") &&
-        !content.toLowerCase().includes("explanation") &&
-        !content.toLowerCase().includes("credit") &&
-        !content.toLowerCase().includes("copyright")
-      ) {
-        title = content;
-        break;
+    
+    // Metoda 1: szukaj tytułu między credit/image a explanation
+    const titleBlockMatch = html.match(
+      /(?:Credit|Copyright)[^]*?<center>\s*<b>\s*([^<]+?)\s*<\/b>/i
+    );
+    if (titleBlockMatch) {
+      const t = titleBlockMatch[1].trim();
+      if (t.length > 2 && t.length < 200) title = t;
+    }
+    
+    // Metoda 2: fallback — szukaj <b> tagów z filtrami
+    if (title === "Astronomy Picture of the Day") {
+      const titleRegex = /<center>\s*<b>\s*([^<]+?)\s*<\/b>\s*<\/center>/gi;
+      let boldMatch: RegExpExecArray | null;
+      const skipWords = [
+        "astronomy picture", "tomorrow", "archive", "authors",
+        "explanation", "credit", "copyright", "editors", "nasa"
+      ];
+      while ((boldMatch = titleRegex.exec(html)) !== null) {
+        const content = boldMatch[1].trim();
+        if (
+          content.length > 3 &&
+          content.length < 200 &&
+          !skipWords.some(w => content.toLowerCase().includes(w))
+        ) {
+          title = content;
+          break;
+        }
       }
     }
 
