@@ -149,9 +149,9 @@ function parseApodHtml(html: string, fallbackDate?: string): APODData | null {
       }
     }
     
-    // Metoda 2: szukaj w tagu <title> strony
+    // Metoda 2: szukaj w tagu <title> strony (obsłuż też HTML entities jak &ndash; &#8211; –)
     if (title === "Astronomy Picture of the Day") {
-      const pageTitleMatch = html.match(/<title>[^–—-]*[–—-]\s*([^<]+)/i);
+      const pageTitleMatch = html.match(/<title>[^<]*?(?:–|—|-|&ndash;|&mdash;|&#8211;|&#8212;)\s*([^<\n]+)/i);
       if (pageTitleMatch) {
         const t = pageTitleMatch[1].trim();
         if (t.length > 3 && t.length < 200) title = t;
@@ -214,6 +214,16 @@ function parseApodHtml(html: string, fallbackDate?: string): APODData | null {
       videoUrl = videoUrl.replace(
         /youtube\.com\/watch\?v=([^&"]+)/,
         "youtube.com/embed/$1"
+      );
+      // YouTube: obsłuż youtu.be short links
+      videoUrl = videoUrl.replace(
+        /youtu\.be\/([^?&"]+)/,
+        "youtube.com/embed/$1"
+      );
+      // Vimeo: obsłuż vimeo.com/ID -> player.vimeo.com/video/ID
+      videoUrl = videoUrl.replace(
+        /(?:www\.)?vimeo\.com\/(\d+)/,
+        "player.vimeo.com/video/$1"
       );
       if (videoUrl.includes("youtube.com/embed/") && !videoUrl.includes("rel=")) {
         videoUrl += (videoUrl.includes("?") ? "&" : "?") + "rel=0";

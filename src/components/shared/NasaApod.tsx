@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   HiOutlineArrowTopRightOnSquare,
   HiOutlineArrowPath,
   HiOutlineCalendarDays,
   HiOutlineSparkles,
+  HiOutlinePlayCircle,
 } from "react-icons/hi2";
 
 interface APODData {
@@ -36,6 +37,8 @@ export default function NasaApod() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const fetchAPOD = useCallback(async (skipCache = false) => {
     try {
@@ -149,27 +152,67 @@ export default function NasaApod() {
       <div className="relative">
         {apod.media_type === "video" ? (
           <div className="relative w-full bg-black" style={{ aspectRatio: "16 / 9" }}>
-            {apod.url.match(/\.(mp4|mov|webm)(\?|$)/i) ? (
+            {apod.url.match(/\.(mp4|mov|webm)(\?|$)/i) && !videoError ? (
+              /* Natywny tag <video> dla plików mp4/webm */
               <video
-                src={apod.url}
-                title={apod.title}
+                ref={videoRef}
+                key={apod.url}
                 className="absolute inset-0 w-full h-full object-contain"
                 controls
-                autoPlay
                 muted
-                loop
                 playsInline
+                preload="metadata"
+                onError={() => setVideoError(true)}
                 crossOrigin="anonymous"
-              />
+              >
+                <source src={apod.url.replace(/^http:/, "https:")} type="video/mp4" />
+                Twoja przeglądarka nie obsługuje wideo HTML5.
+              </video>
+            ) : apod.url.match(/\.(mp4|mov|webm)(\?|$)/i) && videoError ? (
+              /* Fallback gdy wideo mp4 nie wczytało się (np. CORS) */
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center">
+                <HiOutlinePlayCircle className="h-16 w-16 text-night-400 opacity-60" />
+                <p className="text-sm text-night-400">
+                  Film nie może być wyświetlony bezpośrednio.
+                </p>
+                <a
+                  href={apod.url.replace(/^http:/, "https:")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cosmos-600 hover:bg-cosmos-500 text-white text-sm font-medium transition-colors"
+                >
+                  <HiOutlineArrowTopRightOnSquare className="h-4 w-4" />
+                  Otwórz film bezpośrednio
+                </a>
+              </div>
             ) : (
+              /* iframe dla YouTube / Vimeo i innych */
               <iframe
-                src={apod.url.replace(/^http:/, "https:")}
+                src={(() => {
+                  let url = apod.url.replace(/^http:/, "https:");
+                  url = url.replace(
+                    /youtube\.com\/watch\?v=([^&"]+)/,
+                    "youtube.com/embed/$1"
+                  );
+                  url = url.replace(
+                    /youtu\.be\/([^?&"]+)/,
+                    "youtube.com/embed/$1"
+                  );
+                  if (url.includes("youtube.com/embed/")) {
+                    const sep = url.includes("?") ? "&" : "?";
+                    url += `${sep}rel=0&modestbranding=1`;
+                  }
+                  url = url.replace(
+                    /(?:www\.)?vimeo\.com\/(\d+)/,
+                    "player.vimeo.com/video/$1"
+                  );
+                  return url;
+                })()}
                 title={apod.title}
                 className="absolute inset-0 w-full h-full border-0"
                 style={{ border: 0 }}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; web-share"
                 allowFullScreen
-                referrerPolicy="no-referrer"
               />
             )}
           </div>

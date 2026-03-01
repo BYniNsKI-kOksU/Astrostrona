@@ -43,6 +43,7 @@ const nextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://apod.nasa.gov https://*.nasa.gov https://esawebb.org https://*.esawebb.org",
               "connect-src 'self' https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://api.open-meteo.com https://geocoding-api.open-meteo.com https://api.nasa.gov https://nominatim.openstreetmap.org",
+              "frame-src https://www.youtube.com https://youtube.com https://player.vimeo.com https://vimeo.com https://*.nasa.gov https://apod.nasa.gov",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

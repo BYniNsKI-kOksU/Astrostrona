@@ -544,17 +544,29 @@ function analyzeConditions(
   const isAnyNight = sunAlt <= 0;     // jakikolwiek zmierzch/noc
 
   // === WYZNACZ DANE DO OCENY ===
-  // Używamy prognozy na nadchodzącą noc kiedy:
-  // - jest dzień lub zmierzch cywilny (sunAlt > -6)
-  // - ORAZ mamy wystarczająco dużo danych nocnych w prognozie
-  // Gdy jest zmierzch nawigacyjny/astronomiczny/noc — używamy aktualnych danych
+  // Szukamy NAJBLIŻSZEJ godziny w prognozie, by użyć danych warstwowych (low/mid/high)
+  // zamiast polegać na `weather.current` (który może nie mieć warstw lub być opóźniony).
+  // Dla oceny nocnej: zbieramy godziny nocne z prognozy.
+  
+  // Znajdź najbliższą godzinę w forecast (by mieć poprawne warstwy chmur)
+  const nowMs = Date.now();
+  let closestForecastIdx = 0;
+  let closestDiff = Infinity;
+  forecast.forEach((h, i) => {
+    const diff = Math.abs(new Date(h.time).getTime() - nowMs);
+    if (diff < closestDiff) {
+      closestDiff = diff;
+      closestForecastIdx = i;
+    }
+  });
+  const currentForecast = forecast.length > 0 ? forecast[closestForecastIdx] : null;
   
   // Zbierz godziny nocne z prognozy (najbliższe 18h)
   const upcomingNightHours = forecast.filter((h) => {
     const fHour = new Date(h.time).getHours();
     const fTime = new Date(h.time).getTime();
     const isNightHour = fHour >= 21 || fHour <= 4; // ścisła noc
-    return isNightHour && fTime > Date.now() && fTime - Date.now() < 18 * 3600 * 1000;
+    return isNightHour && fTime > nowMs && fTime - nowMs < 18 * 3600 * 1000;
   });
 
   let evalData: {
@@ -600,19 +612,38 @@ function analyzeConditions(
       precipitation: Math.round(avg(nh.map(h => h.precipitation)) * 10) / 10,
     };
   } else {
-    evalData = {
-      cloudCoverLow: weather.cloudCoverLow,
-      cloudCoverMid: weather.cloudCoverMid,
-      cloudCoverHigh: weather.cloudCoverHigh,
-      cloudCover: weather.cloudCover,
-      humidity: weather.humidity,
-      windSpeed: weather.windSpeed,
-      windGusts: weather.windGusts,
-      temperature: weather.temperature,
-      dewPoint: weather.dewPoint,
-      visibility: weather.visibility,
-      precipitation: weather.precipitation,
-    };
+    // Użyj danych z NAJBLIŻSZEJ godziny w forecast (zamiast current),
+    // bo forecast ma spójne dane warstwowe cloud_cover_low/mid/high
+    // które korelują z wykresem 72h i "Najlepszymi godzinami"
+    if (currentForecast) {
+      evalData = {
+        cloudCoverLow: currentForecast.cloudCoverLow,
+        cloudCoverMid: currentForecast.cloudCoverMid,
+        cloudCoverHigh: currentForecast.cloudCoverHigh,
+        cloudCover: currentForecast.cloudCover,
+        humidity: currentForecast.humidity,
+        windSpeed: currentForecast.windSpeed,
+        windGusts: currentForecast.windGusts,
+        temperature: weather.temperature,
+        dewPoint: weather.dewPoint,
+        visibility: currentForecast.visibility,
+        precipitation: currentForecast.precipitation,
+      };
+    } else {
+      evalData = {
+        cloudCoverLow: weather.cloudCoverLow,
+        cloudCoverMid: weather.cloudCoverMid,
+        cloudCoverHigh: weather.cloudCoverHigh,
+        cloudCover: weather.cloudCover,
+        humidity: weather.humidity,
+        windSpeed: weather.windSpeed,
+        windGusts: weather.windGusts,
+        temperature: weather.temperature,
+        dewPoint: weather.dewPoint,
+        visibility: weather.visibility,
+        precipitation: weather.precipitation,
+      };
+    }
   }
 
   // === CHMURY — WARSTWOWA ANALIZA ===
@@ -755,6 +786,7 @@ function analyzeConditions(
     recommendations.push("Warunki sprzyjające obserwacjom! Wykorzystaj tę noc. 🌟");
 
   // Best hours — sortuj po łącznym wpływie chmur, TYLKO przyszłe godziny nocne
+  // Używamy danych prosto z forecast[] — te same dane co wykres 72h
   const now = Date.now();
   const nightHours = forecast.filter((h) => {
     const d = new Date(h.time);
@@ -765,15 +797,17 @@ function analyzeConditions(
   const bestHours = nightHours
     .sort((a, b) => {
       // Priorytet: niskie chmury (najgorsze), potem średnie, potem ogólne
-      const aScore = a.cloudCoverLow * 3 + a.cloudCoverMid * 1.5 + a.cloudCoverHigh * 0.3;
-      const bScore = b.cloudCoverLow * 3 + b.cloudCoverMid * 1.5 + b.cloudCoverHigh * 0.3;
-      return aScore - bScore;
+      // Używamy cloud score warstw, żeby wynik korelował z oceną
+      const aScore = calcLayeredCloudScore(a.cloudCoverLow, a.cloudCoverMid, a.cloudCoverHigh);
+      const bScore = calcLayeredCloudScore(b.cloudCoverLow, b.cloudCoverMid, b.cloudCoverHigh);
+      return bScore - aScore; // malejąco — najlepszy (najwyższy) score pierwszy
     })
     .slice(0, 3)
     .map((h) => {
       const d = new Date(h.time);
       const dayStr = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
-      return `${dayStr} ${d.getHours().toString().padStart(2, "0")}:00 (N:${h.cloudCoverLow}% Ś:${h.cloudCoverMid}% W:${h.cloudCoverHigh}%)`;
+      const score = calcLayeredCloudScore(h.cloudCoverLow, h.cloudCoverMid, h.cloudCoverHigh);
+      return `${dayStr} ${d.getHours().toString().padStart(2, "0")}:00 — N:${h.cloudCoverLow}% Ś:${h.cloudCoverMid}% W:${h.cloudCoverHigh}% (${score}/100)`;
     });
 
   // Visible objects based on Bortle
@@ -828,7 +862,6 @@ function analyzeConditions(
 // =============================================
 function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
 
   // Zbierz daty na oś X
   const dates = new Map<string, number>();
@@ -838,52 +871,86 @@ function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
     if (!dates.has(key)) dates.set(key, i);
   });
 
-  const chartHeight = 140;
+  // Kolor słupka total w zależności od wartości
+  function totalColor(val: number, isNight: boolean): string {
+    if (val === 0) return isNight ? "rgba(34,197,94,0.5)" : "rgba(34,197,94,0.3)";
+    if (val <= 15) return isNight ? "rgba(34,197,94,0.8)" : "rgba(34,197,94,0.5)";
+    if (val <= 30) return isNight ? "rgba(250,204,21,0.9)" : "rgba(250,204,21,0.6)";
+    if (val <= 60) return isNight ? "rgba(251,146,60,0.9)" : "rgba(251,146,60,0.65)";
+    return isNight ? "rgba(239,68,68,0.95)" : "rgba(239,68,68,0.7)";
+  }
+
+  // Kolor słupków warstw
+  const layerColor = {
+    low: "rgb(239,68,68)",
+    mid: "rgb(251,191,36)",
+    high: "rgb(96,165,250)",
+  };
+
+  const ROW_H = 36; // px wysokość wiersza total
+  const LAYER_H = 20; // px wysokość wiersza warstw
 
   return (
     <div className="relative select-none">
-      {/* Trzy wiersze wykresu — osobna linia dla każdej warstwy */}
-      <div className="space-y-1">
+      {/* === WIERSZ TOTAL === */}
+      <div className="flex items-center gap-2 mb-[2px]">
+        <span className="text-[10px] text-night-400 w-14 text-right shrink-0 font-semibold">Łącznie</span>
+        <div className="flex-1 flex items-end gap-[1px]" style={{ height: `${ROW_H}px` }}>
+          {forecast.map((h, i) => {
+            const val = h.cloudCover ?? 0;
+            const hour = new Date(h.time).getHours();
+            const isNight = hour >= 20 || hour <= 5;
+            const isHovered = hoveredIdx === i;
+            const heightPx = val === 0 ? 1 : Math.max(2, Math.round((val / 100) * ROW_H));
+            return (
+              <div
+                key={i}
+                className={clsx("flex-1 rounded-t cursor-pointer transition-all duration-75", isHovered && "ring-1 ring-white/70")}
+                style={{
+                  height: `${heightPx}px`,
+                  backgroundColor: totalColor(val, isNight),
+                }}
+                onMouseEnter={() => setHoveredIdx(i)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* === WIERSZE WARSTW === */}
+      <div className="space-y-[2px] border-t border-night-800/60 pt-[3px]">
         {(["high", "mid", "low"] as const).map((layer) => {
           const label = layer === "high" ? "Wysokie" : layer === "mid" ? "Średnie" : "Niskie";
-          const color = layer === "high" ? "rgb(96,165,250)" : layer === "mid" ? "rgb(251,191,36)" : "rgb(239,68,68)";
-          
+          const color = layerColor[layer];
           return (
-            <div key={layer}>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-night-500 w-14 text-right shrink-0">{label}</span>
-                <div
-                  className="flex-1 flex items-end gap-[1px] h-10"
-                  ref={layer === "low" ? chartRef : undefined}
-                >
-                  {forecast.map((h, i) => {
-                    const val = layer === "high" ? (h.cloudCoverHigh ?? 0)
-                      : layer === "mid" ? (h.cloudCoverMid ?? 0)
-                      : (h.cloudCoverLow ?? 0);
-                    const hour = new Date(h.time).getHours();
-                    const isNight = hour >= 20 || hour <= 5;
-                    const isHovered = hoveredIdx === i;
-
-                    return (
-                      <div
-                        key={i}
-                        className={clsx(
-                          "flex-1 rounded-t cursor-pointer transition-all duration-75",
-                          isHovered && "ring-1 ring-white/60"
-                        )}
-                        style={{
-                          height: `${Math.max(3, val)}%`,
-                          backgroundColor: val === 0
-                            ? (isNight ? "rgba(34,197,94,0.3)" : "rgba(34,197,94,0.15)")
-                            : color,
-                          opacity: val === 0 ? 0.5 : (isNight ? 1 : 0.6),
-                        }}
-                        onMouseEnter={() => setHoveredIdx(i)}
-                        onMouseLeave={() => setHoveredIdx(null)}
-                      />
-                    );
-                  })}
-                </div>
+            <div key={layer} className="flex items-center gap-2">
+              <span className="text-[9px] text-night-600 w-14 text-right shrink-0">{label}</span>
+              <div className="flex-1 flex items-end gap-[1px]" style={{ height: `${LAYER_H}px` }}>
+                {forecast.map((h, i) => {
+                  const val = layer === "high" ? (h.cloudCoverHigh ?? 0)
+                    : layer === "mid" ? (h.cloudCoverMid ?? 0)
+                    : (h.cloudCoverLow ?? 0);
+                  const hour = new Date(h.time).getHours();
+                  const isNight = hour >= 20 || hour <= 5;
+                  const isHovered = hoveredIdx === i;
+                  const heightPx = val === 0 ? 1 : Math.max(1, Math.round((val / 100) * LAYER_H));
+                  return (
+                    <div
+                      key={i}
+                      className={clsx("flex-1 rounded-t cursor-pointer transition-all duration-75", isHovered && "ring-1 ring-white/40")}
+                      style={{
+                        height: `${heightPx}px`,
+                        backgroundColor: val === 0
+                          ? (isNight ? "rgba(34,197,94,0.2)" : "rgba(34,197,94,0.08)")
+                          : color,
+                        opacity: isNight ? 0.85 : 0.55,
+                      }}
+                      onMouseEnter={() => setHoveredIdx(i)}
+                      onMouseLeave={() => setHoveredIdx(null)}
+                    />
+                  );
+                })}
               </div>
             </div>
           );
@@ -925,21 +992,6 @@ function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
         })}
       </div>
 
-      {/* Tło nocne */}
-      <div className="absolute top-0 left-16 right-0 bottom-8 pointer-events-none flex">
-        {forecast.map((h, i) => {
-          const hour = new Date(h.time).getHours();
-          const isNight = hour >= 20 || hour <= 5;
-          return (
-            <div
-              key={i}
-              className="flex-1"
-              style={{ backgroundColor: isNight ? "rgba(99,102,241,0.06)" : "transparent" }}
-            />
-          );
-        })}
-      </div>
-
       {/* Tooltip */}
       {hoveredIdx !== null && (() => {
         const h = forecast[hoveredIdx];
@@ -952,8 +1004,6 @@ function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
         const high = h.cloudCoverHigh ?? 0;
         const hour = d.getHours();
         const isNight = hour >= 20 || hour <= 5;
-
-        // Pozycja tooltipa
         const leftPct = ((hoveredIdx + 0.5) / forecast.length) * 100;
         const flipRight = leftPct > 70;
 
@@ -974,7 +1024,7 @@ function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
               </div>
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between">
-                  <span className="text-night-400">☁️ Łącznie:</span>
+                  <span className="text-night-400 font-medium">☁️ Łącznie:</span>
                   <span className={clsx("font-bold", total > 70 ? "text-red-400" : total > 30 ? "text-yellow-400" : "text-green-400")}>{total}%</span>
                 </div>
                 <div className="border-t border-night-700/50 pt-1 space-y-0.5">
@@ -1019,19 +1069,22 @@ function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
       {/* Legenda */}
       <div className="flex items-center gap-3 mt-3 text-[10px] text-night-500 flex-wrap ml-16">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-2 rounded bg-green-500/40" /> Czyste
+          <span className="w-3 h-2 rounded bg-green-500/50" /> 0-15%
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(239,68,68)" }} /> Niskie
+          <span className="w-3 h-2 rounded bg-yellow-400/70" /> 16-30%
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(251,191,36)" }} /> Średnie
+          <span className="w-3 h-2 rounded bg-orange-400/70" /> 31-60%
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(96,165,250)" }} /> Wysokie
+          <span className="w-3 h-2 rounded bg-red-500/80" /> 61-100%
         </span>
-        <span className="flex items-center gap-1 ml-2">
-          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgba(99,102,241,0.15)" }} /> Noc
+        <span className="flex items-center gap-1 ml-2 border-l border-night-700 pl-2">
+          <span className="text-[9px] text-night-600">warstwy:</span>
+          <span className="w-3 h-1.5 rounded" style={{ backgroundColor: "rgb(239,68,68)", opacity: 0.7 }} /> N
+          <span className="w-3 h-1.5 rounded" style={{ backgroundColor: "rgb(251,191,36)", opacity: 0.7 }} /> Ś
+          <span className="w-3 h-1.5 rounded" style={{ backgroundColor: "rgb(96,165,250)", opacity: 0.7 }} /> W
         </span>
       </div>
     </div>
@@ -1263,8 +1316,8 @@ export default function WeatherPage() {
 
     // Check cache
     // Cache key z precyzją 1 miejsca (~11km) — bliscy sąsiedzi trafią w ten sam cache
-    // Open-Meteo i tak interpoluje do siatki ~11km, więc wyższa precyzja nie ma sensu
-    const cacheKey = `astrofor-weather-${loc.lat.toFixed(1)}-${loc.lng.toFixed(1)}`;
+    // v3 = po zmianie na multi-model ensemble (ICON-EU + GFS + Meteo-France, max warstw)
+    const cacheKey = `astrofor-weather-v3-${loc.lat.toFixed(1)}-${loc.lng.toFixed(1)}`;
     const cached = sessionStorage.getItem(cacheKey);
     const cacheTime = sessionStorage.getItem(cacheKey + "-time");
 
@@ -1280,48 +1333,91 @@ export default function WeatherPage() {
     }
 
     try {
-      // Open-Meteo API (free, no key required)
-      const res = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}` +
-          `&current=temperature_2m,relative_humidity_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility,dew_point_2m,precipitation,is_day` +
-          `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,wind_speed_10m,wind_gusts_10m,visibility,precipitation` +
-          `&forecast_days=3&timezone=auto`
-      );
+      // ================================================================
+      // Multi-model ensemble — pobieramy 3 modele równolegle i bierzemy
+      // MAKSIMUM z każdej warstwy chmur (pesymistyczne podejście dla astro).
+      // Różne modele NWP klasyfikują warstwy chmur inaczej (np. ICON-EU
+      // traktuje chmury niskie jako średnie/wysokie) — ensemble max
+      // daje wynik najbliższy rzeczywistości obserwowanej.
+      // ================================================================
+      const baseParams =
+        `&current=temperature_2m,relative_humidity_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility,dew_point_2m,precipitation,is_day` +
+        `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,wind_speed_10m,wind_gusts_10m,visibility,precipitation` +
+        `&forecast_days=3&timezone=auto`;
 
-      if (!res.ok) throw new Error("Błąd pobierania danych pogodowych");
+      // Model 1: DWD ICON-EU (2km Europa) — primary
+      const iconEuUrl = `https://api.open-meteo.com/v1/dwd-icon?latitude=${loc.lat}&longitude=${loc.lng}${baseParams}`;
+      // Model 2: GFS (globalny NOAA) — secondary, inne podejście do low clouds
+      const gfsUrl = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&models=gfs_seamless${baseParams}`;
+      // Model 3: Meteo-France AROME (3.1km Europa) — tertiary
+      const aromeUrl = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}&models=meteofrance_seamless${baseParams}`;
 
-      const data = await res.json();
+      // Pobierz wszystkie 3 równolegle, nie fail na błędach pomocniczych
+      const [res1, res2, res3] = await Promise.allSettled([
+        fetch(iconEuUrl),
+        fetch(gfsUrl),
+        fetch(aromeUrl),
+      ]);
 
-      const weatherData: WeatherData = {
-        temperature: data.current.temperature_2m,
-        humidity: data.current.relative_humidity_2m,
-        cloudCover: data.current.cloud_cover,
-        cloudCoverLow: data.current.cloud_cover_low ?? 0,
-        cloudCoverMid: data.current.cloud_cover_mid ?? 0,
-        cloudCoverHigh: data.current.cloud_cover_high ?? 0,
-        windSpeed: data.current.wind_speed_10m,
-        windGusts: data.current.wind_gusts_10m ?? 0,
-        visibility: (data.current.visibility || 10000) / 1000, // m -> km
-        dewPoint: data.current.dew_point_2m,
-        precipitation: data.current.precipitation,
-        isDay: data.current.is_day === 1,
+      // Zbierz te które się powiodły
+      const allData: ReturnType<typeof JSON.parse>[] = [];
+      for (const res of [res1, res2, res3]) {
+        if (res.status === "fulfilled" && res.value.ok) {
+          try { allData.push(await res.value.json()); } catch { /* skip */ }
+        }
+      }
+      // Fallback — jeśli żaden się nie udał, spróbuj globalny
+      if (allData.length === 0) {
+        const fallback = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}${baseParams}`
+        );
+        if (!fallback.ok) throw new Error("Błąd pobierania danych pogodowych");
+        allData.push(await fallback.json());
+      }
+
+      // Primary data (ICON-EU lub pierwszy dostępny) — do current weather + metadanych
+      const primary = allData[0];
+
+      // Helper: max z dostępnych modeli dla danego indeksu godziny
+      const maxLayer = (field: string, i: number): number => {
+        let mx = 0;
+        for (const d of allData) {
+          const val = d.hourly?.[field]?.[i];
+          if (typeof val === "number" && val > mx) mx = val;
+        }
+        return mx;
       };
 
-      // Next 72h forecast (3 days)
-      const forecastData: ForecastHour[] = data.hourly.time
+      const weatherData: WeatherData = {
+        temperature: primary.current.temperature_2m,
+        humidity: primary.current.relative_humidity_2m,
+        cloudCover: primary.current.cloud_cover,
+        cloudCoverLow: Math.max(...allData.map(d => d.current?.cloud_cover_low ?? 0)),
+        cloudCoverMid: Math.max(...allData.map(d => d.current?.cloud_cover_mid ?? 0)),
+        cloudCoverHigh: Math.max(...allData.map(d => d.current?.cloud_cover_high ?? 0)),
+        windSpeed: primary.current.wind_speed_10m,
+        windGusts: primary.current.wind_gusts_10m ?? 0,
+        visibility: (primary.current.visibility || 10000) / 1000,
+        dewPoint: primary.current.dew_point_2m,
+        precipitation: primary.current.precipitation,
+        isDay: primary.current.is_day === 1,
+      };
+
+      // Next 72h forecast — ensemble max per layer per hour
+      const forecastData: ForecastHour[] = primary.hourly.time
         .slice(0, 72)
         .map((time: string, i: number) => ({
           time,
-          cloudCover: data.hourly.cloud_cover[i],
-          cloudCoverLow: data.hourly.cloud_cover_low?.[i] ?? 0,
-          cloudCoverMid: data.hourly.cloud_cover_mid?.[i] ?? 0,
-          cloudCoverHigh: data.hourly.cloud_cover_high?.[i] ?? 0,
-          humidity: data.hourly.relative_humidity_2m[i],
-          temperature: data.hourly.temperature_2m[i],
-          windSpeed: data.hourly.wind_speed_10m[i],
-          windGusts: data.hourly.wind_gusts_10m?.[i] ?? 0,
-          visibility: (data.hourly.visibility?.[i] || 10000) / 1000,
-          precipitation: data.hourly.precipitation[i],
+          cloudCover: primary.hourly.cloud_cover[i],
+          cloudCoverLow: maxLayer("cloud_cover_low", i),
+          cloudCoverMid: maxLayer("cloud_cover_mid", i),
+          cloudCoverHigh: maxLayer("cloud_cover_high", i),
+          humidity: primary.hourly.relative_humidity_2m[i],
+          temperature: primary.hourly.temperature_2m[i],
+          windSpeed: primary.hourly.wind_speed_10m[i],
+          windGusts: primary.hourly.wind_gusts_10m?.[i] ?? 0,
+          visibility: (primary.hourly.visibility?.[i] || 10000) / 1000,
+          precipitation: primary.hourly.precipitation[i],
         }));
 
       setWeather(weatherData);
@@ -1604,10 +1700,10 @@ export default function WeatherPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <HiOutlineCloud className="h-3.5 w-3.5" />
-                    Teraz: {weather.cloudCover}% (N:{weather.cloudCoverLow}% Ś:{weather.cloudCoverMid}% W:{weather.cloudCoverHigh}%)
+                    Chmury: N:{conditions.evalCloudLow}% Ś:{conditions.evalCloudMid}% W:{conditions.evalCloudHigh}%
                   </span>
                   <span className="flex items-center gap-1">
-                    💧 Wilg.: {weather.humidity}%
+                    💧 Wilg.: {conditions.evalHumidity}%
                   </span>
                   <span className="flex items-center gap-1">
                     💨 Wiatr: {weather.windSpeed} km/h
@@ -1621,9 +1717,9 @@ export default function WeatherPage() {
                   <div className="mt-2 px-3 py-1.5 rounded-lg bg-cosmos-500/10 border border-cosmos-500/20 text-xs text-cosmos-300 flex items-center gap-2">
                     <HiOutlineInformationCircle className="h-4 w-4 shrink-0" />
                     <span>
-                      Ocena oparta na {conditions.evalSource === "night-forecast" ? "prognozie na nadchodzącą noc" : "prognozie na resztę nocy"}:
-                      {" "}chmury N:{conditions.evalCloudLow}% Ś:{conditions.evalCloudMid}% W:{conditions.evalCloudHigh}%,
-                      {" "}wilgotność {conditions.evalHumidity}%
+                      {conditions.evalSource === "night-forecast" 
+                        ? "Ocena oparta na prognozie na nadchodzącą noc (mediana godzin 21:00-04:00)"
+                        : "Ocena oparta na prognozie na resztę nocy"}
                     </span>
                   </div>
                 )}
@@ -1642,13 +1738,19 @@ export default function WeatherPage() {
               <div className="space-y-3">
                 <MiniScore label="Zachmurzenie" score={conditions.cloudScore} icon="☁️" />
                 
-                {/* Warstwy chmur — ZAWSZE aktualne dane */}
+                {/* Warstwy chmur — dane na których bazuje ocena */}
                 <div className="ml-4 space-y-2 border-l-2 border-night-700/50 pl-3">
-                  <p className="text-[10px] text-night-500 font-medium">Aktualnie:</p>
+                  <p className="text-[10px] text-night-500 font-medium">
+                    {conditions.evalSource === "night-forecast" 
+                      ? "📊 Prognoza nocna (mediana godzin 21-04):"
+                      : conditions.evalSource === "blended-forecast"
+                      ? "📊 Prognoza na resztę nocy:"
+                      : "Dane z najbliższej godziny prognozy:"}
+                  </p>
                   {([
-                    { label: "🔻 Niskie (0-3 km)", val: weather.cloudCoverLow, threshRed: 30, threshYellow: 10 },
-                    { label: "🔸 Średnie (3-8 km)", val: weather.cloudCoverMid, threshRed: 70, threshYellow: 30 },
-                    { label: "🔹 Wysokie (>8 km)", val: weather.cloudCoverHigh, threshRed: 70, threshYellow: 70 },
+                    { label: "🔻 Niskie (0-3 km)", val: conditions.evalCloudLow, threshRed: 30, threshYellow: 10 },
+                    { label: "🔸 Średnie (3-8 km)", val: conditions.evalCloudMid, threshRed: 70, threshYellow: 30 },
+                    { label: "🔹 Wysokie (>8 km)", val: conditions.evalCloudHigh, threshRed: 70, threshYellow: 70 },
                   ] as const).map(({ label, val, threshRed, threshYellow }) => (
                     <div key={label} className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
@@ -1660,27 +1762,6 @@ export default function WeatherPage() {
                       </div>
                     </div>
                   ))}
-                  
-                  {/* Jeśli ocena bazuje na prognozie nocnej — pokaż te dane osobno */}
-                  {conditions.evalSource !== "current" && (
-                    <div className="mt-2 pt-2 border-t border-night-700/30">
-                      <p className="text-[10px] text-cosmos-400 font-medium mb-1">📊 Prognoza nocna (ocena bazuje na tych danych):</p>
-                      <div className="grid grid-cols-3 gap-2 text-[11px]">
-                        <div className="text-center">
-                          <span className="text-night-500 block">Niskie</span>
-                          <span className={clsx("font-bold", conditions.evalCloudLow > 30 ? "text-red-400" : conditions.evalCloudLow > 10 ? "text-yellow-400" : "text-green-400")}>{conditions.evalCloudLow}%</span>
-                        </div>
-                        <div className="text-center">
-                          <span className="text-night-500 block">Średnie</span>
-                          <span className={clsx("font-bold", conditions.evalCloudMid > 50 ? "text-orange-400" : conditions.evalCloudMid > 20 ? "text-yellow-400" : "text-green-400")}>{conditions.evalCloudMid}%</span>
-                        </div>
-                        <div className="text-center">
-                          <span className="text-night-500 block">Wysokie</span>
-                          <span className={clsx("font-bold", conditions.evalCloudHigh > 70 ? "text-blue-400" : "text-green-400")}>{conditions.evalCloudHigh}%</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <MiniScore label="Seeing" score={conditions.seeingScore} icon="👁️" />
@@ -1894,16 +1975,21 @@ export default function WeatherPage() {
 
           {/* 72h cloud forecast chart — interactive */}
           <div className="glass-card rounded-xl border border-night-700 p-5">
-            <h3 className="text-sm font-bold text-night-200 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-night-200 mb-1 flex items-center gap-2">
               <HiOutlineCloud className="h-4 w-4 text-night-400" />
               Prognoza zachmurzenia (72h) — warstwy chmur
             </h3>
+            <p className="text-[10px] text-night-600 mb-3">
+              Wiersz <span className="text-night-400 font-medium">Łącznie</span> = całkowite pokrycie nieba.
+              Warstwy (N/Ś/W) = max z 3 modeli NWP (ICON-EU, GFS, Meteo-France).
+              <span className="text-yellow-600/70"> ⚠ Modele otwartych danych mogą niedoszacowywać niskich chmur vs Meteoblue NEMS.</span>
+            </p>
             <CloudForecastChart forecast={forecast} />
           </div>
 
           {/* Disclaimer */}
           <p className="text-center text-xs text-night-600">
-            Dane pogodowe: Open-Meteo API • Skala Bortle: estymacja na podstawie lokalizacji •
+            Dane pogodowe: Ensemble (ICON-EU + GFS + Meteo-France) via Open-Meteo • Warstwy chmur: max z 3 modeli • Skala Bortle: estymacja na podstawie lokalizacji •
             Ocena warunków ma charakter orientacyjny
           </p>
         </div>
