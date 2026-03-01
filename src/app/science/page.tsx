@@ -1,9 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { mockPosts } from "@/data";
+import { usePosts } from "@/components/providers";
 import { PostCard } from "@/components/post";
 
 export default function SciencePage() {
-  const sciencePosts = mockPosts.filter(
+  const { posts } = usePosts();
+  const sciencePosts = posts.filter(
     (p) => p.category === "science" || p.category === "observation"
   );
 

@@ -1,9 +1,12 @@
+"use client";
+
 import Link from "next/link";
-import { mockPosts } from "@/data";
+import { usePosts } from "@/components/providers";
 import { PostCard } from "@/components/post";
 
 export default function NewsPage() {
-  const newsPosts = mockPosts.filter((p) => p.category === "news");
+  const { getPostsByCategory } = usePosts();
+  const newsPosts = getPostsByCategory("news");
 
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8">

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mockUsers, mockPosts, ALL_ACHIEVEMENTS } from "@/data";
+import { mockUsers, ALL_ACHIEVEMENTS } from "@/data";
 import { PostCard } from "@/components/post";
 import { Badge } from "@/components/ui";
 import { TitleBadge, PointsDisplay, AchievementGrid, TitleProgress } from "@/components/gamification";
 import { getTitleById, countCompletedAchievements } from "@/lib/gamification";
-import { useAuth } from "@/components/providers";
+import { useAuth, usePosts } from "@/components/providers";
 
 export default function ProfilePage() {
   const { user: authUser, isAuthenticated, isLoading } = useAuth();
@@ -42,7 +42,8 @@ export default function ProfilePage() {
     return null;
   }
 
-  const userPosts = mockPosts.filter((p) => p.authorId === user.id);
+  const { getPostsByAuthor } = usePosts();
+  const userPosts = getPostsByAuthor(user.id);
   const gamification = user.gamification;
   const currentTitle = getTitleById(gamification.currentTitleId);
   const completedCount = countCompletedAchievements(gamification);

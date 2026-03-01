@@ -64,14 +64,14 @@ export default function NasaApod() {
       const res = await fetch("/api/apod", { cache: "no-store" });
       if (!res.ok) throw new Error("API error");
       const data: APODData = await res.json();
-      if (data.url) {
+      if (data.url || data.media_type === "video") {
         setApod(data);
         // Zapisz do cache
         const today = new Date().toISOString().split("T")[0];
         sessionStorage.setItem("astrofor-apod", JSON.stringify(data));
         sessionStorage.setItem("astrofor-apod-date", today);
       } else {
-        throw new Error("No image URL");
+        throw new Error("No image/video URL");
       }
     } catch {
       // Fallback na demo dane
@@ -148,13 +148,30 @@ export default function NasaApod() {
       {/* Zdjęcie / Video */}
       <div className="relative">
         {apod.media_type === "video" ? (
-          <div className="aspect-video">
-            <iframe
-              src={apod.url}
-              title={apod.title}
-              className="w-full h-full"
-              allowFullScreen
-            />
+          <div className="relative w-full bg-black" style={{ aspectRatio: "16 / 9" }}>
+            {apod.url.match(/\.(mp4|mov|webm)(\?|$)/i) ? (
+              <video
+                src={apod.url}
+                title={apod.title}
+                className="absolute inset-0 w-full h-full object-contain"
+                controls
+                autoPlay
+                muted
+                loop
+                playsInline
+                crossOrigin="anonymous"
+              />
+            ) : (
+              <iframe
+                src={apod.url.replace(/^http:/, "https:")}
+                title={apod.title}
+                className="absolute inset-0 w-full h-full border-0"
+                style={{ border: 0 }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+              />
+            )}
           </div>
         ) : (
           <div className="relative aspect-video overflow-hidden">

@@ -25,7 +25,11 @@ interface WeatherData {
   temperature: number;
   humidity: number;
   cloudCover: number;
+  cloudCoverLow: number;    // chmury niskie (0-3 km) — KLUCZOWE
+  cloudCoverMid: number;    // chmury średnie (3-8 km)
+  cloudCoverHigh: number;   // chmury wysokie (>8 km) — najmniej szkodliwe
   windSpeed: number;
+  windGusts: number;        // podmuchy wiatru
   visibility: number; // km
   dewPoint: number;
   precipitation: number;
@@ -35,9 +39,13 @@ interface WeatherData {
 interface ForecastHour {
   time: string;
   cloudCover: number;
+  cloudCoverLow: number;
+  cloudCoverMid: number;
+  cloudCoverHigh: number;
   humidity: number;
   temperature: number;
   windSpeed: number;
+  windGusts: number;
   visibility: number;
   precipitation: number;
 }
@@ -70,6 +78,13 @@ interface AstroConditions {
   recommendations: string[];
   bestHours: string[];
   visibleObjects: string[];
+  evalSource: "current" | "night-forecast" | "blended-forecast";
+  evalCloudLow: number;
+  evalCloudMid: number;
+  evalCloudHigh: number;
+  evalHumidity: number;
+  sunAltitude: number; // kąt słońca nad horyzontem
+  twilightLabel: string; // etykieta pory dnia
   categories: {
     widefield: CategoryScore;
     deepsky: CategoryScore;
@@ -130,7 +145,10 @@ function estimateBortle(lat: number, lng: number): number {
   let baseBortle = 4;
 
   // Oblicz wpływ każdego źródła LP
-  let totalLightContribution = 0;
+  // UWAGA: Używamy logiki „najsilniejsze źródło + skyglow" zamiast prostej sumy
+  // Bo suma małe miasto (Bortle 5) + poświata Poznania dawała Bortle 6 dla Kórnika (realne: 5)
+  let maxCoreBortle = 0; // Bortle najbliższego rdzenia miasta
+  let totalGlowContribution = 0; // Skumulowana poświata z odległych miast
 
   for (const src of sources) {
     const dist = Math.sqrt(
@@ -139,32 +157,38 @@ function estimateBortle(lat: number, lng: number): number {
     ); // dystans w km
 
     const coreKm = src.coreR * 111;
-    // Zasięg poświaty zależy od populacji: ~sqrt(pop) * 0.002 km
+    // Zasięg poświaty zależy od populacji: ~sqrt(pop) * 0.04 km
     const glowReach = Math.sqrt(src.pop) * 0.04; // np. Warszawa: ~54km, Poznań: ~29km
 
     if (dist < coreKm) {
-      // W samym centrum miasta
-      totalLightContribution += src.coreBortle;
+      // W samym centrum miasta — bierz maksimum (nie sumuj!)
+      maxCoreBortle = Math.max(maxCoreBortle, src.coreBortle);
     } else if (dist < glowReach) {
-      // Spadek liniowy z odległością
+      // Poświata spada liniowo z odległością — te się sumują (lekko)
       const factor = 1 - (dist - coreKm) / (glowReach - coreKm);
-      totalLightContribution += src.coreBortle * factor * 0.6;
+      totalGlowContribution += src.coreBortle * factor * 0.3; // zmniejszony mnożnik (0.3 zamiast 0.6)
     }
   }
 
-  // Przekształć sumę wpływu LP na Bortle
-  // Kumulacja światła z wielu miast podnosi Bortle
+  // Przekształć na Bortle:
+  // Bierz max z: coreBortle (jeśli jesteśmy w rdzeniu) ALBO base + glow
   let estimatedBortle: number;
-  if (totalLightContribution >= 8) estimatedBortle = 8;
-  else if (totalLightContribution >= 6.5) estimatedBortle = 7;
-  else if (totalLightContribution >= 5) estimatedBortle = 6;
-  else if (totalLightContribution >= 3.5) estimatedBortle = 5;
-  else if (totalLightContribution >= 1.5) estimatedBortle = 4;
-  else if (totalLightContribution >= 0.5) estimatedBortle = 3;
-  else estimatedBortle = baseBortle;
-
-  // Jeśli obliczony Bortle jest niższy niż baza, użyj bazy
-  estimatedBortle = Math.max(baseBortle, estimatedBortle);
+  
+  if (maxCoreBortle > 0) {
+    // Jesteśmy w rdzeniu jakiegoś miasta — użyj core Bortle
+    // Poświata z dalszych miast może dodać max +1
+    const glowBonus = totalGlowContribution >= 2 ? 1 : 0;
+    estimatedBortle = Math.min(9, maxCoreBortle + glowBonus);
+  } else {
+    // Poza rdzeniami miast — bazowy + poświata
+    if (totalGlowContribution >= 5) estimatedBortle = 7;
+    else if (totalGlowContribution >= 3) estimatedBortle = 6;
+    else if (totalGlowContribution >= 1.5) estimatedBortle = 5;
+    else if (totalGlowContribution >= 0.5) estimatedBortle = 4;
+    else estimatedBortle = baseBortle;
+    
+    estimatedBortle = Math.max(baseBortle, estimatedBortle);
+  }
 
   // Ciemne strefy mogą obniżyć poniżej bazy
   for (const zone of darkZones) {
@@ -186,7 +210,7 @@ function estimateBortle(lat: number, lng: number): number {
   const inPoland = lat >= 49 && lat <= 54.9 && lng >= 14 && lng <= 24.2;
   if (!inPoland) {
     // Uproszczona estymacja dla innych krajów — bazowy 4
-    estimatedBortle = Math.max(3, Math.min(7, Math.round(totalLightContribution > 0 ? totalLightContribution : 4)));
+    estimatedBortle = Math.max(3, Math.min(7, Math.round(totalGlowContribution > 0 ? totalGlowContribution + 3 : maxCoreBortle > 0 ? maxCoreBortle : 4)));
   }
 
   return Math.max(1, Math.min(9, estimatedBortle));
@@ -210,43 +234,61 @@ function calcCategories(
   humidityScore: number,
   windScore: number,
   bortle: number,
-  weather: WeatherData
+  weather: WeatherData,
+  moonIllumination: number
 ): AstroConditions["categories"] {
   // ---- WIDEFIELD / SZEROKOKĄTNA ----
   // Zależy głównie od: przejrzystość, chmury, wiatr (krótkie ogniskowe = mniejsze seeing)
   // Bortle mało szkodzi bo duże pole widzenia łapie jasne struktury (Droga Mleczna, zodiacal)
+  // Księżyc — umiarkowana kara (jasny Księżyc wymywa Drogę Mleczną)
+  const moonPenaltyWF = moonIllumination > 90 ? 30
+    : moonIllumination > 75 ? 20
+    : moonIllumination > 50 ? 10
+    : moonIllumination > 25 ? 3
+    : 0;
   const wfScore = Math.max(0, Math.min(100, Math.round(
     cloudScore * 0.35 +
     transparencyScore * 0.30 +
     windScore * 0.15 +
     humidityScore * 0.10 +
     seeingScore * 0.10 -
-    Math.max(0, (bortle - 4)) * 3 // lekka kara za LP
+    Math.max(0, (bortle - 4)) * 3 - // lekka kara za LP
+    moonPenaltyWF
   )));
   const wfTips: string[] = [];
   if (wfScore >= 60) wfTips.push("Szeroki kąt pola widzenia sprawia, że seeing jest mniej istotny.");
-  if (bortle <= 4) wfTips.push("Ciemne niebo — idealne na Drogę Mleczną i krajobraz nocny.");
+  if (bortle <= 4 && moonIllumination < 30) wfTips.push("Ciemne niebo + brak Księżyca — idealne na Drogę Mleczną i krajobraz nocny.");
+  if (moonIllumination > 75) wfTips.push(`Księżyc ${moonIllumination}% — Droga Mleczna będzie słabo widoczna.`);
   if (bortle >= 5 && wfScore >= 40) wfTips.push("Użyj filtra light pollution do krajobrazów nocnych.");
   if (weather.cloudCover > 30 && weather.cloudCover < 70) wfTips.push("Chmury mogą dać ciekawy efekt w landscape astrophoto.");
   if (wfTips.length === 0) wfTips.push("Sprawdź zachmurzenie — to kluczowy czynnik.");
 
   // ---- DEEP SKY ----
   // Najbardziej wymagająca: potrzebuje doskonałego seeing, przejrzystości, ciemnego nieba
+  // PLUS: faza Księżyca >90% = kara min 50 punktów!
   const bortlePenaltyDS = (bortle - 1) * 7; // 0-56 — bardzo surowa kara
+  // Kara za Księżyc: >90% = -50, >75% = -35, >50% = -20, >25% = -8
+  const moonPenaltyDS = moonIllumination > 90 ? 50
+    : moonIllumination > 75 ? 35
+    : moonIllumination > 50 ? 20
+    : moonIllumination > 25 ? 8
+    : 0;
   const dsScore = Math.max(0, Math.min(100, Math.round(
     cloudScore * 0.25 +
     seeingScore * 0.25 +
     transparencyScore * 0.25 +
     humidityScore * 0.10 +
     windScore * 0.15 -
-    bortlePenaltyDS
+    bortlePenaltyDS -
+    moonPenaltyDS
   )));
   const dsTips: string[] = [];
+  if (moonIllumination > 75) dsTips.push(`Księżyc ${moonIllumination}% — obiekty DSO będą "wymyte". Użyj filtrów narrowband (Ha, OIII).`);
   if (bortle >= 6) dsTips.push("Wysoki Bortle — użyj filtrów narrowband (Ha, OIII, SII).");
   if (bortle >= 6 && dsScore >= 20) dsTips.push("Skup się na jasnych mgławicach emisyjnych (M42, NGC 7000).");
-  if (bortle <= 3) dsTips.push("Ciemne niebo! Broadband RGB/LRGB da świetne rezultaty.");
+  if (bortle <= 3 && moonIllumination < 30) dsTips.push("Ciemne niebo + brak Księżyca! Broadband RGB/LRGB da świetne rezultaty.");
   if (seeingScore < 50) dsTips.push("Słaby seeing — wydłuż ekspozycje, zmniejsz rozdzielczość.");
-  if (seeingScore >= 70 && bortle <= 4) dsTips.push("Dobry seeing + ciemne niebo — próbuj galaktyki i mgławice planetarne.");
+  if (seeingScore >= 70 && bortle <= 4 && moonIllumination < 40) dsTips.push("Dobry seeing + ciemne niebo — próbuj galaktyki i mgławice planetarne.");
   if (weather.windSpeed > 15) dsTips.push("Wiatr może powodować drgania — sprawdź prowadzenie.");
   if (dsTips.length === 0) dsTips.push("Warunki korzystne dla deep-sky.");
 
@@ -284,18 +326,24 @@ function calcCategories(
   if (lunarTips.length === 0) lunarTips.push("Standardowe warunki dla obserwacji Księżyca.");
 
   // ---- VISUAL / OBSERWACJE WIZUALNE ----
-  // Mix: chmury najważniejsze, potem seeing, Bortle umiarkowanie ważny
+  // Mix: chmury najważniejsze, potem seeing, Bortle umiarkowanie ważny, Księżyc przeszkadza
   const visBortlePenalty = (bortle - 1) * 4;
-  const visScore = Math.max(0, Math.min(100, Math.round(
+  const moonPenaltyVis = moonIllumination > 90 ? 25
+    : moonIllumination > 75 ? 15
+    : moonIllumination > 50 ? 8
+    : 0;
+  const visScoreCalc = Math.max(0, Math.min(100, Math.round(
     cloudScore * 0.35 +
     seeingScore * 0.20 +
     transparencyScore * 0.20 +
     humidityScore * 0.10 +
     windScore * 0.15 -
-    visBortlePenalty
+    visBortlePenalty -
+    moonPenaltyVis
   )));
   const visTips: string[] = [];
-  if (bortle <= 3) visTips.push("Ciemne niebo — gołym okiem zobaczysz Drogę Mleczną!");
+  if (bortle <= 3 && moonIllumination < 30) visTips.push("Ciemne niebo + brak Księżyca — gołym okiem zobaczysz Drogę Mleczną!");
+  if (moonIllumination > 75) visTips.push(`Księżyc ${moonIllumination}% — ogranicz obserwacje do jasnych obiektów.`);
   if (bortle >= 5 && bortle <= 6) visTips.push("Użyj lornetki 10x50 — poprawi kontrast obiektów.");
   if (bortle >= 7) visTips.push("Miasto — ogranicz się do planet, Księżyca i jasnych gromad.");
   if (weather.temperature < 0) visTips.push("Mróz — ubierz się ciepło, baterie tracą pojemność!");
@@ -331,8 +379,8 @@ function calcCategories(
       tips: lunarTips,
     },
     visual: {
-      score: visScore,
-      verdict: scoreToVerdict(visScore),
+      score: visScoreCalc,
+      verdict: scoreToVerdict(visScoreCalc),
       label: "Obserwacje wizualne",
       icon: "👁️",
       tips: visTips,
@@ -341,83 +389,316 @@ function calcCategories(
 }
 
 // =============================================
-// Analyze conditions
+// Moon phase calculation (simplified)
 // =============================================
+function getMoonPhase(): { phase: number; illumination: number; name: string } {
+  // Obliczamy fazę Księżyca algorytmem Conwaya
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  let r = year % 100;
+  r = r % 19;
+  if (r > 9) r -= 19;
+  r = ((r * 11) % 30) + month + day;
+  if (month < 3) r += 2;
+  r -= (year < 2000 ? 4 : 8.3);
+  r = Math.floor(r + 0.5) % 30;
+  if (r < 0) r += 30;
+
+  // r jest teraz dniem cyklu księżycowego (0 = nów, 15 = pełnia)
+  // Illumination: 0% przy nowiu, 100% przy pełni
+  const illumination = Math.round(
+    (1 - Math.cos((r / 29.53) * 2 * Math.PI)) / 2 * 100
+  );
+
+  let name = "Nów";
+  if (r >= 1 && r < 7) name = "Przybywający sierp";
+  else if (r >= 7 && r < 9) name = "Pierwsza kwadra";
+  else if (r >= 9 && r < 14) name = "Przybywający garb";
+  else if (r >= 14 && r < 16) name = "Pełnia";
+  else if (r >= 16 && r < 22) name = "Ubywający garb";
+  else if (r >= 22 && r < 24) name = "Trzecia kwadra";
+  else if (r >= 24) name = "Ubywający sierp";
+
+  return { phase: r, illumination, name };
+}
+
+// =============================================
+// Estimate Jet Stream impact from wind speed at surface
+// W rzeczywistości potrzebowalibyśmy danych z wyższych warstw atm.,
+// ale aproksymujemy: silny wiatr przy powierzchni koreluje z Jet Streamem
+// =============================================
+function estimateJetStreamPenalty(windSpeed: number): number {
+  // windSpeed w km/h na powierzchni
+  // Jet Stream > 60 km/h na 200-300 hPa → drastyczne pogorszenie seeingu
+  // Korelacja: wiatr powierzchniowy * ~3-4 ≈ szacunkowy Jet Stream
+  const estimatedJetStream = windSpeed * 3.5; // m/s szacunkowo na ~10km wys.
+
+  if (estimatedJetStream < 30) return 0;      // < 30 km/h = brak wpływu
+  if (estimatedJetStream < 50) return 10;     // lekki wpływ
+  if (estimatedJetStream < 70) return 25;     // umiarkowany
+  if (estimatedJetStream < 100) return 40;    // silny — min 40% kary
+  return 55;                                   // ekstremalny Jet Stream
+}
+
+// =============================================
+// Sun Altitude calculation (solar position)
+// =============================================
+function getSunAltitude(lat: number, lng: number, date?: Date): number {
+  const now = date || new Date();
+  
+  // Dzień roku
+  const start = new Date(now.getFullYear(), 0, 0);
+  const diff = now.getTime() - start.getTime();
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  
+  // Czas w godzinach UTC (z ułamkami)
+  const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+  
+  // Deklinacja słoneczna (Spencer, 1971)
+  const B = (2 * Math.PI / 365) * (dayOfYear - 1);
+  const declinationRad = 0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B)
+    - 0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B)
+    - 0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B);
+  
+  // Równanie czasu (w minutach)
+  const eot = 229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B)
+    - 0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
+  
+  // Czas słoneczny lokalny
+  const solarNoon = 12 - lng / 15; // w UTC
+  const solarTime = utcHours + eot / 60;
+  const hourAngle = (solarTime - solarNoon) * 15; // stopnie
+  const hourAngleRad = hourAngle * Math.PI / 180;
+  
+  // Wysokość Słońca
+  const latRad = lat * Math.PI / 180;
+  const sinAlt = Math.sin(latRad) * Math.sin(declinationRad) +
+    Math.cos(latRad) * Math.cos(declinationRad) * Math.cos(hourAngleRad);
+  
+  return Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180 / Math.PI;
+}
+
+function getTwilightLabel(sunAlt: number): string {
+  if (sunAlt > 0) return "Dzień";
+  if (sunAlt > -6) return "Zmierzch cywilny";
+  if (sunAlt > -12) return "Zmierzch nawigacyjny";
+  if (sunAlt > -18) return "Zmierzch astronomiczny";
+  return "Noc astronomiczna";
+}
+
+function getTwilightEmoji(sunAlt: number): string {
+  if (sunAlt > 0) return "☀️";
+  if (sunAlt > -6) return "🌇";
+  if (sunAlt > -12) return "🌆";
+  if (sunAlt > -18) return "🌃";
+  return "🌑";
+}
+
+// =============================================
+// Analyze conditions — SKORYGOWANY MODEL WAGOWY
+// Uwzględnia: niskie chmury, Jet Stream, wilgotność jako czynnik negatywny,
+// fazę Księżyca dla DSO
+// =============================================
+// Helper: oblicz cloud score z wartości warstw
+function calcLayeredCloudScore(low: number, mid: number, high: number): number {
+  let lowS: number;
+  if (low <= 5) lowS = 100;
+  else if (low <= 10) lowS = 85;
+  else if (low <= 20) lowS = 60;
+  else if (low <= 35) lowS = 35;
+  else if (low <= 50) lowS = 15;
+  else lowS = 0;
+
+  let midS: number;
+  if (mid <= 10) midS = 100;
+  else if (mid <= 25) midS = 90;
+  else if (mid <= 50) midS = 65;
+  else if (mid <= 75) midS = 40;
+  else midS = 20;
+
+  let highS: number;
+  if (high <= 20) highS = 100;
+  else if (high <= 50) highS = 90;
+  else if (high <= 80) highS = 75;
+  else highS = 60;
+
+  return Math.max(0, Math.min(100, Math.round(
+    lowS * 0.65 + midS * 0.25 + highS * 0.10
+  )));
+}
+
 function analyzeConditions(
   weather: WeatherData,
   forecast: ForecastHour[],
-  bortle: number
+  bortle: number,
+  lat: number,
+  lng: number
 ): AstroConditions {
-  // Cloud score (0-100, 100 = clear)
-  const cloudScore = Math.max(0, 100 - weather.cloudCover);
+  // === WYSOKOŚĆ SŁOŃCA ===
+  const sunAlt = getSunAltitude(lat, lng);
+  const twilightLabel = getTwilightLabel(sunAlt);
+  const isAstroNight = sunAlt <= -12; // zmierzch astronomiczny lub noc
+  const isAnyNight = sunAlt <= 0;     // jakikolwiek zmierzch/noc
 
-  // Humidity score (ideal: 30-65%, astronomia toleruje do 80%)
-  const humidityScore =
-    weather.humidity < 30
-      ? 90
-      : weather.humidity < 50
-      ? 100
-      : weather.humidity < 65
-      ? 85
-      : weather.humidity < 75
-      ? 70
-      : weather.humidity < 85
-      ? 50
-      : weather.humidity < 92
-      ? 30
-      : 10;
+  // === WYZNACZ DANE DO OCENY ===
+  // Używamy prognozy na nadchodzącą noc kiedy:
+  // - jest dzień lub zmierzch cywilny (sunAlt > -6)
+  // - ORAZ mamy wystarczająco dużo danych nocnych w prognozie
+  // Gdy jest zmierzch nawigacyjny/astronomiczny/noc — używamy aktualnych danych
+  
+  // Zbierz godziny nocne z prognozy (najbliższe 18h)
+  const upcomingNightHours = forecast.filter((h) => {
+    const fHour = new Date(h.time).getHours();
+    const fTime = new Date(h.time).getTime();
+    const isNightHour = fHour >= 21 || fHour <= 4; // ścisła noc
+    return isNightHour && fTime > Date.now() && fTime - Date.now() < 18 * 3600 * 1000;
+  });
 
-  // Wind score (ideal: < 15 km/h, tolerancja do 25 km/h)
-  const windScore =
-    weather.windSpeed < 5
-      ? 100
-      : weather.windSpeed < 10
-      ? 95
-      : weather.windSpeed < 15
-      ? 85
-      : weather.windSpeed < 20
-      ? 70
-      : weather.windSpeed < 30
-      ? 45
-      : 10;
+  let evalData: {
+    cloudCoverLow: number;
+    cloudCoverMid: number;
+    cloudCoverHigh: number;
+    cloudCover: number;
+    humidity: number;
+    windSpeed: number;
+    windGusts: number;
+    temperature: number;
+    dewPoint: number;
+    visibility: number;
+    precipitation: number;
+  };
 
-  // Seeing score (based on wind + humidity + temp-dewpoint spread)
-  const tempDewSpread = Math.abs(weather.temperature - weather.dewPoint);
-  const seeingScore = Math.min(
-    100,
-    Math.round(
-      windScore * 0.4 +
-        (tempDewSpread > 5 ? 80 : tempDewSpread * 16) * 0.3 +
-        humidityScore * 0.3
-    )
+  // Prognoza nocna gdy jest dzień/zmierzch cywilny i mamy >=3 godziny nocne
+  const useNightForecast = sunAlt > -6 && upcomingNightHours.length >= 3;
+  // Blended gdy jest noc, ale aktualne chmury > 70% i prognoza mówi inaczej
+  const useBlendedForecast = !useNightForecast && isAnyNight && upcomingNightHours.length >= 2 && weather.cloudCover > 70;
+  
+  if (useNightForecast || useBlendedForecast) {
+    const sorted = (arr: number[]) => [...arr].sort((a, b) => a - b);
+    const median = (arr: number[]) => {
+      const s = sorted(arr);
+      const mid = Math.floor(s.length / 2);
+      return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+    };
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+
+    const nh = upcomingNightHours;
+    evalData = {
+      cloudCoverLow: Math.round(median(nh.map(h => h.cloudCoverLow))),
+      cloudCoverMid: Math.round(median(nh.map(h => h.cloudCoverMid))),
+      cloudCoverHigh: Math.round(median(nh.map(h => h.cloudCoverHigh))),
+      cloudCover: Math.round(median(nh.map(h => h.cloudCover))),
+      humidity: Math.round(avg(nh.map(h => h.humidity))),
+      windSpeed: Math.round(avg(nh.map(h => h.windSpeed)) * 10) / 10,
+      windGusts: Math.round(avg(nh.map(h => h.windGusts)) * 10) / 10,
+      temperature: weather.temperature,
+      dewPoint: weather.dewPoint,
+      visibility: weather.visibility,
+      precipitation: Math.round(avg(nh.map(h => h.precipitation)) * 10) / 10,
+    };
+  } else {
+    evalData = {
+      cloudCoverLow: weather.cloudCoverLow,
+      cloudCoverMid: weather.cloudCoverMid,
+      cloudCoverHigh: weather.cloudCoverHigh,
+      cloudCover: weather.cloudCover,
+      humidity: weather.humidity,
+      windSpeed: weather.windSpeed,
+      windGusts: weather.windGusts,
+      temperature: weather.temperature,
+      dewPoint: weather.dewPoint,
+      visibility: weather.visibility,
+      precipitation: weather.precipitation,
+    };
+  }
+
+  // === CHMURY — WARSTWOWA ANALIZA ===
+  const cloudScore = calcLayeredCloudScore(
+    evalData.cloudCoverLow,
+    evalData.cloudCoverMid,
+    evalData.cloudCoverHigh
   );
 
-  // Transparency score (based on humidity, visibility, precipitation)
-  // Visibility > 20 km = doskonałe, > 10 km = bardzo dobre
-  const visScore = Math.min(100, weather.visibility >= 30 ? 100 : weather.visibility >= 20 ? 95 : weather.visibility >= 10 ? 85 : (weather.visibility / 10) * 85);
-  const precipScore = weather.precipitation === 0 ? 100 : weather.precipitation < 0.1 ? 50 : 0;
-  const transparencyScore = Math.round(
-    visScore * 0.4 + humidityScore * 0.3 + precipScore * 0.3
-  );
+  // === WILGOTNOŚĆ === (ODWRÓCONA LOGIKA — wysoka wilgotność = ZŁO)
+  let humidityScore: number;
+  if (evalData.humidity < 30) humidityScore = 95;
+  else if (evalData.humidity < 40) humidityScore = 100;
+  else if (evalData.humidity < 55) humidityScore = 85;
+  else if (evalData.humidity < 65) humidityScore = 65;
+  else if (evalData.humidity < 75) humidityScore = 45;
+  else if (evalData.humidity < 80) humidityScore = 30;
+  else if (evalData.humidity < 85) humidityScore = 20;
+  else if (evalData.humidity < 90) humidityScore = 12;
+  else humidityScore = 5;
 
-  // Bortle penalty — ZREDUKOWANE: Bortle szkodzi głównie deep-sky i wizualnym,
-  // ale ogólna ocena nie powinna być zdominowana przez LP
-  // Stara formuła: (bortle-1)*5 = do 40 pkt kary — ZBYT DUŻO
-  // Nowa: łagodna kara logarytmiczna, max ~15 pkt
-  const bortlePenalty = Math.min(15, Math.round(Math.pow(bortle - 1, 1.3) * 1.2));
+  // === WIATR ===
+  // Uwzględnij podmuchy — to podmuchy powodują drgania montażu
+  const effectiveWind = Math.max(evalData.windSpeed, evalData.windGusts * 0.7);
+  let windScore: number;
+  if (effectiveWind < 5) windScore = 100;
+  else if (effectiveWind < 10) windScore = 90;
+  else if (effectiveWind < 15) windScore = 75;
+  else if (effectiveWind < 20) windScore = 55;
+  else if (effectiveWind < 30) windScore = 30;
+  else if (effectiveWind < 40) windScore = 10;
+  else windScore = 0;
 
-  // Overall score
+  // === SEEING ===
+  const tempDewSpread = Math.abs(evalData.temperature - evalData.dewPoint);
+  const jetPenalty = estimateJetStreamPenalty(evalData.windSpeed);
+
+  const baseSeeingFromWind = evalData.windSpeed < 5 ? 90 : evalData.windSpeed < 10 ? 80 : evalData.windSpeed < 15 ? 65 : evalData.windSpeed < 20 ? 45 : evalData.windSpeed < 30 ? 25 : 5;
+  const baseSeeingFromDew = tempDewSpread > 8 ? 85 : tempDewSpread > 5 ? 70 : tempDewSpread > 3 ? 50 : tempDewSpread > 1 ? 25 : 10;
+  const baseSeeingFromHumidity = evalData.humidity < 50 ? 90 : evalData.humidity < 65 ? 75 : evalData.humidity < 75 ? 55 : evalData.humidity < 85 ? 35 : 15;
+
+  const seeingScore = Math.max(0, Math.min(100, Math.round(
+    baseSeeingFromWind * 0.35 +
+    baseSeeingFromDew * 0.25 +
+    baseSeeingFromHumidity * 0.20 +
+    (100 - evalData.cloudCover * 0.3) * 0.20 -
+    jetPenalty
+  )));
+
+  // === PRZEJRZYSTOŚĆ (Transparency) ===
+  const visScore = evalData.visibility >= 30 ? 100 : evalData.visibility >= 20 ? 90 : evalData.visibility >= 15 ? 75 : evalData.visibility >= 10 ? 60 : evalData.visibility >= 5 ? 35 : 10;
+  const precipScore = evalData.precipitation === 0 ? 100 : evalData.precipitation < 0.1 ? 30 : 0;
+  const transparencyScore = Math.max(0, Math.round(
+    visScore * 0.40 +
+    humidityScore * 0.35 +
+    precipScore * 0.25
+  ));
+
+  // === FAZA KSIĘŻYCA ===
+  const moonData = getMoonPhase();
+  // moonPenalty: pełnia (>90%) = do 50 pkt kary na overall, 50-90% = umiarkowana kara
+  // Ale dotyczy głównie DSO — planety i Księżyc nie są karane
+  let moonPenaltyOverall = 0;
+  if (moonData.illumination > 90) moonPenaltyOverall = 15;
+  else if (moonData.illumination > 75) moonPenaltyOverall = 8;
+  else if (moonData.illumination > 50) moonPenaltyOverall = 4;
+  else if (moonData.illumination > 25) moonPenaltyOverall = 1;
+
+  // === BORTLE ===
+  const bortlePenalty = Math.min(12, Math.round(Math.pow(Math.max(0, bortle - 2), 1.2)));
+
+  // === OVERALL SCORE ===
+  // Chmury najważniejsze, ale NIE jedyny czynnik
+  // Info: jeśli użyto prognozy nocnej, cloudScore odzwierciedla nocne warunki
   const overallScore = Math.max(
     0,
     Math.min(
       100,
       Math.round(
-        cloudScore * 0.35 +
-          seeingScore * 0.20 +
-          transparencyScore * 0.20 +
-          humidityScore * 0.10 +
-          windScore * 0.15 -
-          bortlePenalty
+        cloudScore * 0.35 +       // chmury
+        seeingScore * 0.20 +      // seeing
+        transparencyScore * 0.18 + // przejrzystość
+        windScore * 0.15 +        // wiatr
+        humidityScore * 0.12 -    // wilgotność
+        bortlePenalty -           // zanieczyszczenie świetlne (max 12)
+        moonPenaltyOverall        // faza Księżyca (max 15)
       )
     )
   );
@@ -430,38 +711,69 @@ function analyzeConditions(
   else if (overallScore >= 20) verdict = "poor";
   else verdict = "terrible";
 
-  // Recommendations
+  // Recommendations (oparte na evalData — danych użytych do oceny)
   const recommendations: string[] = [];
-  if (weather.cloudCover > 70)
-    recommendations.push("Zachmurzenie zbyt duże — poczekaj na przejaśnienie.");
-  if (weather.cloudCover > 30 && weather.cloudCover <= 70)
-    recommendations.push("Częściowe zachmurzenie — szukaj przerw między chmurami.");
-  if (weather.humidity > 80)
-    recommendations.push("Wysoka wilgotność — ryzyko rosy na optyce. Użyj osuszacza.");
-  if (weather.windSpeed > 20)
+  
+  // Info o trybie oceny
+  if (useNightForecast) {
+    recommendations.push("📊 Ocena bazuje na prognozie na nadchodzącą noc (mediana godzin 20:00-05:00).");
+  } else if (useBlendedForecast) {
+    recommendations.push("📊 Aktualne zachmurzenie wysokie — ocena oparta na prognozie na resztę nocy.");
+  }
+  
+  if (evalData.cloudCoverLow > 50)
+    recommendations.push(`Niskie chmury ${evalData.cloudCoverLow}% — całkowicie blokują obserwacje.`);
+  else if (evalData.cloudCoverLow > 20)
+    recommendations.push(`Niskie chmury ${evalData.cloudCoverLow}% — poważne utrudnienia, szukaj przerw.`);
+  if (evalData.cloudCoverMid > 70 && evalData.cloudCoverLow <= 20)
+    recommendations.push(`Średnie chmury ${evalData.cloudCoverMid}% — mogą przeszkadzać, ale są cieńsze niż niskie.`);
+  if (evalData.cloudCoverHigh > 50 && evalData.cloudCoverLow <= 10 && evalData.cloudCoverMid <= 30)
+    recommendations.push(`Wysokie chmury (cirrusy) ${evalData.cloudCoverHigh}% — lekkie rozproszenie światła, obserwacje możliwe.`);
+  if (evalData.cloudCover > 70 && evalData.cloudCoverLow <= 10)
+    recommendations.push("Ogólne zachmurzenie wysokie, ale niskie chmury minimalne — warunki mogą być lepsze niż wskazuje ogólny %.");
+  if (evalData.humidity > 85)
+    recommendations.push("Wysoka wilgotność (>85%) — ryzyko rosy na optyce. Użyj grzałki na obiektyw.");
+  else if (evalData.humidity > 75)
+    recommendations.push("Podwyższona wilgotność — monitoruj rosę na optyce.");
+  if (evalData.windSpeed > 20)
     recommendations.push("Silny wiatr — stabilizuj montaż, skróć ekspozycje.");
+  if (jetPenalty >= 25)
+    recommendations.push("Szacowany silny Jet Stream — seeing będzie słaby niezależnie od warunków przy gruncie.");
   if (tempDewSpread < 3)
-    recommendations.push("Mała różnica temp./punkt rosy — mgła możliwa. Użyj grzałki na obiektyw.");
+    recommendations.push("Mała różnica temp./punkt rosy — mgła prawdopodobna. Użyj grzałki na obiektyw.");
+  if (moonData.illumination > 75)
+    recommendations.push(`Księżyc ${moonData.illumination}% (${moonData.name}) — obiekty deep-sky będą słabo widoczne. Skup się na planetach, Księżycu lub użyj filtrów narrowband.`);
+  if (moonData.illumination > 50 && moonData.illumination <= 75)
+    recommendations.push(`Księżyc ${moonData.illumination}% — unikaj obiektów DSO blisko Księżyca.`);
   if (bortle >= 6)
     recommendations.push("Duże zanieczyszczenie świetlne — użyj filtrów LP lub narrowband.");
-  if (bortle <= 3 && weather.cloudCover < 20)
-    recommendations.push("Doskonałe ciemne niebo! Wykorzystaj na obiekty deep-sky.");
-  if (weather.precipitation > 0)
+  if (bortle <= 3 && evalData.cloudCover < 20 && moonData.illumination < 30)
+    recommendations.push("Doskonałe ciemne niebo + brak Księżyca! Wykorzystaj na obiekty deep-sky.");
+  if (evalData.precipitation > 0)
     recommendations.push("Opady — obserwacje niemożliwe. Poczekaj na poprawę.");
   if (recommendations.length === 0)
     recommendations.push("Warunki sprzyjające obserwacjom! Wykorzystaj tę noc. 🌟");
 
-  // Best hours (find hours with lowest cloud cover in next 24h)
+  // Best hours — sortuj po łącznym wpływie chmur, TYLKO przyszłe godziny nocne
+  const now = Date.now();
   const nightHours = forecast.filter((h) => {
-    const hour = new Date(h.time).getHours();
-    return hour >= 20 || hour <= 5;
+    const d = new Date(h.time);
+    const hour = d.getHours();
+    const isNightHour = hour >= 20 || hour <= 5;
+    return isNightHour && d.getTime() > now;
   });
   const bestHours = nightHours
-    .sort((a, b) => a.cloudCover - b.cloudCover)
+    .sort((a, b) => {
+      // Priorytet: niskie chmury (najgorsze), potem średnie, potem ogólne
+      const aScore = a.cloudCoverLow * 3 + a.cloudCoverMid * 1.5 + a.cloudCoverHigh * 0.3;
+      const bScore = b.cloudCoverLow * 3 + b.cloudCoverMid * 1.5 + b.cloudCoverHigh * 0.3;
+      return aScore - bScore;
+    })
     .slice(0, 3)
     .map((h) => {
       const d = new Date(h.time);
-      return `${d.getHours().toString().padStart(2, "0")}:00 (chmury: ${h.cloudCover}%)`;
+      const dayStr = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return `${dayStr} ${d.getHours().toString().padStart(2, "0")}:00 (N:${h.cloudCoverLow}% Ś:${h.cloudCoverMid}% W:${h.cloudCoverHigh}%)`;
     });
 
   // Visible objects based on Bortle
@@ -500,8 +812,230 @@ function analyzeConditions(
     recommendations,
     bestHours,
     visibleObjects,
-    categories: calcCategories(cloudScore, seeingScore, transparencyScore, humidityScore, windScore, bortle, weather),
+    evalSource: useNightForecast ? "night-forecast" as const : useBlendedForecast ? "blended-forecast" as const : "current" as const,
+    evalCloudLow: evalData.cloudCoverLow,
+    evalCloudMid: evalData.cloudCoverMid,
+    evalCloudHigh: evalData.cloudCoverHigh,
+    evalHumidity: evalData.humidity,
+    sunAltitude: sunAlt,
+    twilightLabel,
+    categories: calcCategories(cloudScore, seeingScore, transparencyScore, humidityScore, windScore, bortle, weather, moonData.illumination),
   };
+}
+
+// =============================================
+// Interactive Cloud Forecast Chart (72h) — Meteoblue-style
+// =============================================
+function CloudForecastChart({ forecast }: { forecast: ForecastHour[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  // Zbierz daty na oś X
+  const dates = new Map<string, number>();
+  forecast.forEach((h, i) => {
+    const d = new Date(h.time);
+    const key = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+    if (!dates.has(key)) dates.set(key, i);
+  });
+
+  const chartHeight = 140;
+
+  return (
+    <div className="relative select-none">
+      {/* Trzy wiersze wykresu — osobna linia dla każdej warstwy */}
+      <div className="space-y-1">
+        {(["high", "mid", "low"] as const).map((layer) => {
+          const label = layer === "high" ? "Wysokie" : layer === "mid" ? "Średnie" : "Niskie";
+          const color = layer === "high" ? "rgb(96,165,250)" : layer === "mid" ? "rgb(251,191,36)" : "rgb(239,68,68)";
+          
+          return (
+            <div key={layer}>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-night-500 w-14 text-right shrink-0">{label}</span>
+                <div
+                  className="flex-1 flex items-end gap-[1px] h-10"
+                  ref={layer === "low" ? chartRef : undefined}
+                >
+                  {forecast.map((h, i) => {
+                    const val = layer === "high" ? (h.cloudCoverHigh ?? 0)
+                      : layer === "mid" ? (h.cloudCoverMid ?? 0)
+                      : (h.cloudCoverLow ?? 0);
+                    const hour = new Date(h.time).getHours();
+                    const isNight = hour >= 20 || hour <= 5;
+                    const isHovered = hoveredIdx === i;
+
+                    return (
+                      <div
+                        key={i}
+                        className={clsx(
+                          "flex-1 rounded-t cursor-pointer transition-all duration-75",
+                          isHovered && "ring-1 ring-white/60"
+                        )}
+                        style={{
+                          height: `${Math.max(3, val)}%`,
+                          backgroundColor: val === 0
+                            ? (isNight ? "rgba(34,197,94,0.3)" : "rgba(34,197,94,0.15)")
+                            : color,
+                          opacity: val === 0 ? 0.5 : (isNight ? 1 : 0.6),
+                        }}
+                        onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(null)}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Oś czasu — godziny */}
+      <div className="flex items-center gap-0 mt-1 ml-16">
+        {forecast.map((h, i) => {
+          const hour = new Date(h.time).getHours();
+          const showLabel = hour % 6 === 0;
+          const isMidnight = hour === 0;
+          return (
+            <div key={i} className="flex-1 text-center">
+              {showLabel && (
+                <span className={clsx("text-[8px]", isMidnight ? "text-cosmos-400 font-bold" : "text-night-600")}>
+                  {hour}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Separatory dat */}
+      <div className="flex items-center gap-0 ml-16">
+        {forecast.map((h, i) => {
+          const d = new Date(h.time);
+          const hour = d.getHours();
+          const key = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+          const isFirst = dates.get(key) === i;
+          return (
+            <div key={i} className="flex-1 text-center">
+              {isFirst && hour === 0 && (
+                <span className="text-[9px] text-cosmos-400 font-medium">{key}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Tło nocne */}
+      <div className="absolute top-0 left-16 right-0 bottom-8 pointer-events-none flex">
+        {forecast.map((h, i) => {
+          const hour = new Date(h.time).getHours();
+          const isNight = hour >= 20 || hour <= 5;
+          return (
+            <div
+              key={i}
+              className="flex-1"
+              style={{ backgroundColor: isNight ? "rgba(99,102,241,0.06)" : "transparent" }}
+            />
+          );
+        })}
+      </div>
+
+      {/* Tooltip */}
+      {hoveredIdx !== null && (() => {
+        const h = forecast[hoveredIdx];
+        const d = new Date(h.time);
+        const dayStr = `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const hourStr = `${d.getHours().toString().padStart(2, "0")}:00`;
+        const total = h.cloudCover ?? 0;
+        const low = h.cloudCoverLow ?? 0;
+        const mid = h.cloudCoverMid ?? 0;
+        const high = h.cloudCoverHigh ?? 0;
+        const hour = d.getHours();
+        const isNight = hour >= 20 || hour <= 5;
+
+        // Pozycja tooltipa
+        const leftPct = ((hoveredIdx + 0.5) / forecast.length) * 100;
+        const flipRight = leftPct > 70;
+
+        return (
+          <div
+            className="absolute z-50 pointer-events-none"
+            style={{
+              top: "-8px",
+              left: flipRight ? undefined : `calc(${leftPct}% + 60px)`,
+              right: flipRight ? `calc(${100 - leftPct}% + 16px)` : undefined,
+              transform: "translateX(-50%)",
+            }}
+          >
+            <div className="bg-night-900 border border-night-600 rounded-lg shadow-xl px-3 py-2 min-w-[180px]">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-bold text-night-200">{dayStr} {hourStr}</span>
+                <span className="text-[10px] text-night-500">{isNight ? "🌙 Noc" : "☀️ Dzień"}</span>
+              </div>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-night-400">☁️ Łącznie:</span>
+                  <span className={clsx("font-bold", total > 70 ? "text-red-400" : total > 30 ? "text-yellow-400" : "text-green-400")}>{total}%</span>
+                </div>
+                <div className="border-t border-night-700/50 pt-1 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="text-night-500">🔻 Niskie (0-3km):</span>
+                    <span className={clsx("font-medium", low > 30 ? "text-red-400" : low > 10 ? "text-yellow-400" : "text-green-400")}>{low}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-night-500">🔸 Średnie (3-8km):</span>
+                    <span className={clsx("font-medium", mid > 50 ? "text-orange-400" : mid > 20 ? "text-yellow-400" : "text-green-400")}>{mid}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-night-500">🔹 Wysokie (&gt;8km):</span>
+                    <span className={clsx("font-medium", high > 70 ? "text-blue-400" : "text-green-400")}>{high}%</span>
+                  </div>
+                </div>
+                <div className="border-t border-night-700/50 pt-1 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="text-night-500">💧 Wilgotność:</span>
+                    <span className="text-night-300">{h.humidity}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-night-500">💨 Wiatr:</span>
+                    <span className="text-night-300">{h.windSpeed} km/h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-night-500">🌡️ Temp.:</span>
+                    <span className="text-night-300">{h.temperature}°C</span>
+                  </div>
+                </div>
+              </div>
+              {total === 0 && (
+                <div className="mt-1 text-[10px] text-green-400 font-medium text-center">
+                  ✓ Czyste niebo — idealne warunki
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Legenda */}
+      <div className="flex items-center gap-3 mt-3 text-[10px] text-night-500 flex-wrap ml-16">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-2 rounded bg-green-500/40" /> Czyste
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(239,68,68)" }} /> Niskie
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(251,191,36)" }} /> Średnie
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgb(96,165,250)" }} /> Wysokie
+        </span>
+        <span className="flex items-center gap-1 ml-2">
+          <span className="w-3 h-2 rounded" style={{ backgroundColor: "rgba(99,102,241,0.15)" }} /> Noc
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // =============================================
@@ -740,7 +1274,7 @@ export default function WeatherPage() {
       setWeather(parsed.weather);
       setForecast(parsed.forecast);
       const bortle = estimateBortle(loc.lat, loc.lng);
-      setConditions(analyzeConditions(parsed.weather, parsed.forecast, bortle));
+      setConditions(analyzeConditions(parsed.weather, parsed.forecast, bortle, loc.lat, loc.lng));
       setIsLoading(false);
       return;
     }
@@ -749,9 +1283,9 @@ export default function WeatherPage() {
       // Open-Meteo API (free, no key required)
       const res = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lng}` +
-          `&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,visibility,dew_point_2m,precipitation,is_day` +
-          `&hourly=cloud_cover,relative_humidity_2m,temperature_2m,wind_speed_10m,visibility,precipitation` +
-          `&forecast_days=2&timezone=auto`
+          `&current=temperature_2m,relative_humidity_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_gusts_10m,visibility,dew_point_2m,precipitation,is_day` +
+          `&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,temperature_2m,wind_speed_10m,wind_gusts_10m,visibility,precipitation` +
+          `&forecast_days=3&timezone=auto`
       );
 
       if (!res.ok) throw new Error("Błąd pobierania danych pogodowych");
@@ -762,22 +1296,30 @@ export default function WeatherPage() {
         temperature: data.current.temperature_2m,
         humidity: data.current.relative_humidity_2m,
         cloudCover: data.current.cloud_cover,
+        cloudCoverLow: data.current.cloud_cover_low ?? 0,
+        cloudCoverMid: data.current.cloud_cover_mid ?? 0,
+        cloudCoverHigh: data.current.cloud_cover_high ?? 0,
         windSpeed: data.current.wind_speed_10m,
+        windGusts: data.current.wind_gusts_10m ?? 0,
         visibility: (data.current.visibility || 10000) / 1000, // m -> km
         dewPoint: data.current.dew_point_2m,
         precipitation: data.current.precipitation,
         isDay: data.current.is_day === 1,
       };
 
-      // Next 48h forecast
+      // Next 72h forecast (3 days)
       const forecastData: ForecastHour[] = data.hourly.time
-        .slice(0, 48)
+        .slice(0, 72)
         .map((time: string, i: number) => ({
           time,
           cloudCover: data.hourly.cloud_cover[i],
+          cloudCoverLow: data.hourly.cloud_cover_low?.[i] ?? 0,
+          cloudCoverMid: data.hourly.cloud_cover_mid?.[i] ?? 0,
+          cloudCoverHigh: data.hourly.cloud_cover_high?.[i] ?? 0,
           humidity: data.hourly.relative_humidity_2m[i],
           temperature: data.hourly.temperature_2m[i],
           windSpeed: data.hourly.wind_speed_10m[i],
+          windGusts: data.hourly.wind_gusts_10m?.[i] ?? 0,
           visibility: (data.hourly.visibility?.[i] || 10000) / 1000,
           precipitation: data.hourly.precipitation[i],
         }));
@@ -787,7 +1329,7 @@ export default function WeatherPage() {
 
       // Estimate Bortle + analyze
       const bortle = estimateBortle(loc.lat, loc.lng);
-      const analysis = analyzeConditions(weatherData, forecastData, bortle);
+      const analysis = analyzeConditions(weatherData, forecastData, bortle, loc.lat, loc.lng);
       setConditions(analysis);
 
       // Cache
@@ -1020,12 +1562,15 @@ export default function WeatherPage() {
             <span className="text-night-500 text-xs">Open-Meteo</span>
             <span className="text-night-600">•</span>
             <span className="flex items-center gap-1">
-              {weather.isDay ? (
+              {conditions.sunAltitude > 0 ? (
                 <HiOutlineSun className="h-3.5 w-3.5 text-yellow-400" />
+              ) : conditions.sunAltitude > -6 ? (
+                <HiOutlineSun className="h-3.5 w-3.5 text-orange-400" />
               ) : (
                 <HiOutlineMoon className="h-3.5 w-3.5 text-blue-400" />
               )}
-              {weather.isDay ? "Dzień" : "Noc"}
+              {conditions.twilightLabel}
+              <span className="text-night-500 text-[10px]">({conditions.sunAltitude.toFixed(1)}°)</span>
             </span>
           </div>
 
@@ -1037,11 +1582,6 @@ export default function WeatherPage() {
             )}
           >
             <div className="flex flex-col md:flex-row items-center gap-6 md:gap-10">
-              {/* Score ring */}
-              <div className="relative">
-                <ScoreRing score={conditions.overallScore} size={140} label="" />
-              </div>
-
               {/* Verdict info */}
               <div className="flex-1 text-center md:text-left">
                 <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
@@ -1064,7 +1604,7 @@ export default function WeatherPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <HiOutlineCloud className="h-3.5 w-3.5" />
-                    Chmury: {weather.cloudCover}%
+                    Teraz: {weather.cloudCover}% (N:{weather.cloudCoverLow}% Ś:{weather.cloudCoverMid}% W:{weather.cloudCoverHigh}%)
                   </span>
                   <span className="flex items-center gap-1">
                     💧 Wilg.: {weather.humidity}%
@@ -1077,6 +1617,16 @@ export default function WeatherPage() {
                     Widoczność: {weather.visibility.toFixed(0)} km
                   </span>
                 </div>
+                {conditions.evalSource !== "current" && (
+                  <div className="mt-2 px-3 py-1.5 rounded-lg bg-cosmos-500/10 border border-cosmos-500/20 text-xs text-cosmos-300 flex items-center gap-2">
+                    <HiOutlineInformationCircle className="h-4 w-4 shrink-0" />
+                    <span>
+                      Ocena oparta na {conditions.evalSource === "night-forecast" ? "prognozie na nadchodzącą noc" : "prognozie na resztę nocy"}:
+                      {" "}chmury N:{conditions.evalCloudLow}% Ś:{conditions.evalCloudMid}% W:{conditions.evalCloudHigh}%,
+                      {" "}wilgotność {conditions.evalHumidity}%
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1091,11 +1641,72 @@ export default function WeatherPage() {
               </h3>
               <div className="space-y-3">
                 <MiniScore label="Zachmurzenie" score={conditions.cloudScore} icon="☁️" />
+                
+                {/* Warstwy chmur — ZAWSZE aktualne dane */}
+                <div className="ml-4 space-y-2 border-l-2 border-night-700/50 pl-3">
+                  <p className="text-[10px] text-night-500 font-medium">Aktualnie:</p>
+                  {([
+                    { label: "🔻 Niskie (0-3 km)", val: weather.cloudCoverLow, threshRed: 30, threshYellow: 10 },
+                    { label: "🔸 Średnie (3-8 km)", val: weather.cloudCoverMid, threshRed: 70, threshYellow: 30 },
+                    { label: "🔹 Wysokie (>8 km)", val: weather.cloudCoverHigh, threshRed: 70, threshYellow: 70 },
+                  ] as const).map(({ label, val, threshRed, threshYellow }) => (
+                    <div key={label} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-night-400">{label}</span>
+                        <span className={clsx("font-medium", val > threshRed ? "text-red-400" : val > threshYellow ? "text-yellow-400" : "text-green-400")}>{val}%</span>
+                      </div>
+                      <div className="h-1 bg-night-800 rounded-full overflow-hidden">
+                        <div className={clsx("h-full rounded-full", val > threshRed ? "bg-red-500" : val > threshYellow ? "bg-yellow-500" : "bg-green-500")} style={{ width: `${Math.max(2, val)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Jeśli ocena bazuje na prognozie nocnej — pokaż te dane osobno */}
+                  {conditions.evalSource !== "current" && (
+                    <div className="mt-2 pt-2 border-t border-night-700/30">
+                      <p className="text-[10px] text-cosmos-400 font-medium mb-1">📊 Prognoza nocna (ocena bazuje na tych danych):</p>
+                      <div className="grid grid-cols-3 gap-2 text-[11px]">
+                        <div className="text-center">
+                          <span className="text-night-500 block">Niskie</span>
+                          <span className={clsx("font-bold", conditions.evalCloudLow > 30 ? "text-red-400" : conditions.evalCloudLow > 10 ? "text-yellow-400" : "text-green-400")}>{conditions.evalCloudLow}%</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-night-500 block">Średnie</span>
+                          <span className={clsx("font-bold", conditions.evalCloudMid > 50 ? "text-orange-400" : conditions.evalCloudMid > 20 ? "text-yellow-400" : "text-green-400")}>{conditions.evalCloudMid}%</span>
+                        </div>
+                        <div className="text-center">
+                          <span className="text-night-500 block">Wysokie</span>
+                          <span className={clsx("font-bold", conditions.evalCloudHigh > 70 ? "text-blue-400" : "text-green-400")}>{conditions.evalCloudHigh}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <MiniScore label="Seeing" score={conditions.seeingScore} icon="👁️" />
                 <MiniScore label="Przejrzystość" score={conditions.transparencyScore} icon="✨" />
                 <MiniScore label="Wilgotność" score={conditions.humidityScore} icon="💧" />
                 <MiniScore label="Wiatr" score={conditions.windScore} icon="💨" />
               </div>
+
+              {/* Faza Księżyca */}
+              {(() => {
+                const moon = getMoonPhase();
+                const moonEmoji = moon.illumination > 90 ? "🌕" : moon.illumination > 60 ? "🌖" : moon.illumination > 30 ? "🌓" : moon.illumination > 5 ? "🌒" : "🌑";
+                return (
+                  <div className="mt-4 pt-3 border-t border-night-700/50">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-night-400">{moonEmoji} Księżyc</span>
+                      <span className="text-night-300 font-medium">{moon.illumination}% — {moon.name}</span>
+                    </div>
+                    {moon.illumination > 75 && (
+                      <p className="text-[11px] text-yellow-400/80 mt-1">
+                        ⚠️ Jasny Księżyc — obiekty Deep Sky będą trudne do obserwacji
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Bortle + Light pollution */}
@@ -1281,56 +1892,13 @@ export default function WeatherPage() {
             </div>
           )}
 
-          {/* 24h cloud forecast mini chart */}
+          {/* 72h cloud forecast chart — interactive */}
           <div className="glass-card rounded-xl border border-night-700 p-5">
             <h3 className="text-sm font-bold text-night-200 mb-4 flex items-center gap-2">
               <HiOutlineCloud className="h-4 w-4 text-night-400" />
-              Prognoza zachmurzenia (48h)
+              Prognoza zachmurzenia (72h) — warstwy chmur
             </h3>
-            <div className="flex items-end gap-[2px] h-24">
-              {forecast.slice(0, 48).map((h, i) => {
-                const hour = new Date(h.time).getHours();
-                const isNight = hour >= 20 || hour <= 5;
-                return (
-                  <div
-                    key={i}
-                    className="flex-1 rounded-t transition-all group relative"
-                    style={{
-                      height: `${Math.max(4, h.cloudCover)}%`,
-                      backgroundColor: isNight
-                        ? h.cloudCover < 30
-                          ? "rgba(34,197,94,0.6)"
-                          : h.cloudCover < 60
-                          ? "rgba(59,130,246,0.5)"
-                          : "rgba(239,68,68,0.5)"
-                        : "rgba(255,255,255,0.1)",
-                    }}
-                    title={`${new Date(h.time).getHours()}:00 — chmury: ${h.cloudCover}%`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex justify-between text-[10px] text-night-600 mt-1">
-              <span>Teraz</span>
-              <span>+12h</span>
-              <span>+24h</span>
-              <span>+36h</span>
-              <span>+48h</span>
-            </div>
-            <div className="flex items-center gap-4 mt-2 text-[10px] text-night-500">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-2 rounded bg-green-500/60" /> Czyste (noc)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-2 rounded bg-blue-500/50" /> Częściowe (noc)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-2 rounded bg-red-500/50" /> Zachmurzone (noc)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-2 rounded bg-white/10" /> Dzień
-              </span>
-            </div>
+            <CloudForecastChart forecast={forecast} />
           </div>
 
           {/* Disclaimer */}

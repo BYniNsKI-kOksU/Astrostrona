@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { HiOutlineArrowLeft, HiOutlinePhoto, HiOutlineXMark, HiOutlineArrowsPointingOut } from "react-icons/hi2";
 import { FORUM_CATEGORIES } from "@/lib/constants";
 import { useAuth } from "@/components/providers";
+import { usePosts } from "@/components/providers";
 import { useToast } from "@/components/ui";
 import clsx from "clsx";
 
@@ -25,6 +26,7 @@ function formatFileSize(bytes: number): string {
 
 export default function NewPostPage() {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const { addPost } = usePosts();
   const { addToast } = useToast();
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -394,6 +396,28 @@ export default function NewPostPage() {
                 });
                 return;
               }
+
+              // Parsowanie tagów
+              const parsedTags = tagsInput
+                .split(",")
+                .map((t) => t.trim())
+                .filter((t) => t.length > 0)
+                .map((t) => (t.startsWith("#") ? t : `#${t}`));
+
+              // Konwersja blob URL-ów obrazków na data URLs żeby przetrwały w localStorage
+              const imageUrls = images.map((img) => img.url);
+
+              addPost({
+                title: title.trim(),
+                content: content.trim(),
+                category: category as import("@/types").PostCategory,
+                tags: parsedTags,
+                images: imageUrls,
+                authorId: user!.id,
+                authorName: user!.displayName,
+                authorAvatar: user!.avatar,
+              });
+
               addToast({
                 type: "success",
                 title: "Post opublikowany!",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { mockPosts } from "@/data";
+import { usePosts } from "@/components/providers";
 import { PostList } from "@/components/post";
 import { SearchBar } from "@/components/ui";
 import Link from "next/link";
@@ -25,12 +25,13 @@ const sortOptions = [
 ];
 
 export default function ForumPage() {
+  const { posts } = usePosts();
   const [activeCategory, setActiveCategory] = useState("all");
   const [activeSort, setActiveSort] = useState("hot");
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredPosts = useMemo(() => {
-    let result = [...mockPosts];
+    let result = [...posts];
 
     // Filtrowanie po kategorii
     if (activeCategory !== "all") {
@@ -66,7 +67,7 @@ export default function ForumPage() {
     }
 
     return result;
-  }, [activeCategory, activeSort, searchQuery]);
+  }, [activeCategory, activeSort, searchQuery, posts]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-8">

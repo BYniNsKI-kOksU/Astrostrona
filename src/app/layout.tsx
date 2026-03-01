@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
-import { ThemeProvider, AuthProvider } from "@/components/providers";
+import { ThemeProvider, AuthProvider, PostsProvider } from "@/components/providers";
 import { ToastProvider } from "@/components/ui";
 import "@/styles/globals.css";
 
@@ -23,11 +23,13 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col stars-bg">
         <ThemeProvider>
           <AuthProvider>
-            <ToastProvider>
-              <Navbar />
-              <main className="flex-1">{children}</main>
-              <Footer />
-            </ToastProvider>
+            <PostsProvider>
+              <ToastProvider>
+                <Navbar />
+                <main className="flex-1">{children}</main>
+                <Footer />
+              </ToastProvider>
+            </PostsProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

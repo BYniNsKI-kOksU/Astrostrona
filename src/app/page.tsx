@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { mockPosts, mockImages } from "@/data";
+import { mockImages } from "@/data";
+import { usePosts } from "@/components/providers";
 import { PostCard } from "@/components/post";
 import { ImageCard } from "@/components/gallery";
 import NasaApod from "@/components/shared/NasaApod";
@@ -43,7 +46,8 @@ const features = [
 ];
 
 export default function HomePage() {
-  const latestPosts = mockPosts.slice(0, 3);
+  const { posts } = usePosts();
+  const latestPosts = posts.slice(0, 3);
   const latestImages = mockImages.slice(0, 4);
 
   return (

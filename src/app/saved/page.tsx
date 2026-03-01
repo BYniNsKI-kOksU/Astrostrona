@@ -3,9 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mockPosts, mockImages } from "@/data";
+import { mockImages } from "@/data";
 import { PostCard } from "@/components/post";
-import { useAuth } from "@/components/providers";
+import { useAuth, usePosts } from "@/components/providers";
 import {
   HiOutlineBookmark,
   HiOutlinePhoto,
@@ -15,16 +15,18 @@ import {
 } from "react-icons/hi2";
 import clsx from "clsx";
 
-// Symulujemy zapisane posty i zdjęcia (w prawdziwej apce byłoby to z backendu)
-const savedPosts = mockPosts.filter((_, i) => i < 3);
+// Symulujemy zapisane zdjęcia (w prawdziwej apce byłoby to z backendu)
 const savedImages = mockImages.filter((_, i) => i < 4);
 
 type Tab = "posts" | "images";
 
 export default function SavedPage() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { posts } = usePosts();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("posts");
+
+  const savedPosts = posts.filter((_, i) => i < 3);
 
   if (isLoading) {
     return (

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { mockPosts } from "@/data";
+import { usePosts } from "@/components/providers";
 import {
   HiOutlineArrowLeft,
   HiOutlineHeart,
@@ -165,7 +165,8 @@ function CommentItem({ comment }: { comment: Comment }) {
 }
 
 export default function PostDetailPage({ params }: { params: { id: string } }) {
-  const post = mockPosts.find((p) => p.id === params.id);
+  const { getPostById } = usePosts();
+  const post = getPostById(params.id);
   const [isLiked, setIsLiked] = useState(post?.isLiked ?? false);
   const [isSaved, setIsSaved] = useState(post?.isSaved ?? false);
   const [likes, setLikes] = useState(post?.likes ?? 0);
